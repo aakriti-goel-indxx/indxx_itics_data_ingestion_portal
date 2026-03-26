@@ -728,44 +728,44 @@ let COMPANIES = [
 // ── WORKBENCH ─────────────────────────────────────────────
 let WORKBENCH = [
   {id:'W001',coId:'C001',coName:'Alphabet Inc',isin:'US02079K3059',l0:'009',l0Name:'Communication Services',
-   assignedTo:'Rakshit Lodha',type:'ar_update',wfStatus:'pending_analyst',completionStatus:'wip',
+   assignedTo:'Rakshit Lodha',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024,2025],
    priority:'high',llm:true,rejCount:0,rejComment:'',committeeNote:'',
    submittedDate:null,createdDate:'2025-03-01'},
   {id:'W002',coId:'C003',coName:'Apple Inc',isin:'US0378331005',l0:'010',l0Name:'Information Technology',
-   assignedTo:'Rakshit Lodha',type:'fresh',wfStatus:'pending_analyst',completionStatus:'wip',
+   assignedTo:'Rakshit Lodha',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
    priority:'medium',llm:true,rejCount:0,rejComment:'',committeeNote:'',
    submittedDate:null,createdDate:'2025-02-15'},
   {id:'W003',coId:'C004',coName:'Nvidia Corp',isin:'US67066G1040',l0:'010',l0Name:'Information Technology',
-   assignedTo:'Sejal Jain',type:'fresh',wfStatus:'pending_analyst',completionStatus:'wip',
+   assignedTo:'Sejal Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019],
    priority:'high',llm:false,rejCount:1,
    rejComment:'Revenue segmentation for FY2018 does not reconcile with page 22 of the AR. The Data Center and Gaming split appears transposed — please re-verify against footnote 4B.',
    committeeNote:'',submittedDate:'2025-03-10',createdDate:'2025-02-01'},
   {id:'W004',coId:'C005',coName:'Meta Platforms Inc',isin:'US30303M1027',l0:'009',l0Name:'Communication Services',
-   assignedTo:'Nripraj Singh Rathore',type:'ar_update',wfStatus:'pending_committee',completionStatus:'wip',
+   assignedTo:'Nripraj Singh Rathore',type:'AR_UPDATE',wfStatus:'PENDING_IC',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024,2025],
    priority:'high',llm:true,rejCount:2,
    rejComment:'Reality Labs classification disputed again. Insufficient justification for Emerging Technology vs Consumer Goods mapping. Second rejection — escalating to Committee.',
    committeeNote:'',submittedDate:'2025-03-05',createdDate:'2025-01-20'},
   {id:'W005',coId:'C006',coName:'Netflix Inc',isin:'US64110L1061',l0:'007',l0Name:'Consumer Discretionary',
-   assignedTo:'Nripraj Singh Rathore',type:'fresh',wfStatus:'pending_analyst',completionStatus:'wip',
+   assignedTo:'Nripraj Singh Rathore',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
    priority:'low',llm:false,rejCount:0,rejComment:'',committeeNote:'',
    submittedDate:null,createdDate:'2025-02-20'},
   {id:'W006',coId:'C007',coName:'Novartis AG',isin:'CH0012005267',l0:'006',l0Name:'Health Care',
-   assignedTo:'Ishani Suthar',type:'fresh',wfStatus:'pending_qc',completionStatus:'wip',
+   assignedTo:'Ishani Suthar',type:'FRESH',wfStatus:'PENDING_QC',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
    priority:'medium',llm:true,rejCount:0,rejComment:'',committeeNote:'',
    submittedDate:'2025-03-20',createdDate:'2025-01-10'},
   {id:'W007',coId:'C009',coName:'Mitsubishi UFJ Financial Group',isin:'JP3902900004',l0:'001',l0Name:'Financials',
-   assignedTo:'Pranjal Jain',type:'invalidated_gc',wfStatus:'pending_analyst',completionStatus:'wip',
+   assignedTo:'Pranjal Jain',type:'INVALIDATED',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022],pendingYears:[2023,2024,2025],invalidatedYears:[2023,2024],
    priority:'high',llm:false,rejCount:0,rejComment:'',committeeNote:'',
    submittedDate:null,createdDate:'2025-03-15'},
   {id:'W008',coId:'C010',coName:'Starbucks Corp',isin:'US8552441094',l0:'007',l0Name:'Consumer Discretionary',
-   assignedTo:'Vivek Paliwal',type:'fresh',wfStatus:'pending_committee',completionStatus:'wip',
+   assignedTo:'Vivek Paliwal',type:'FRESH',wfStatus:'PENDING_IC',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
    priority:'medium',llm:false,rejCount:2,
    rejComment:'Licensed store vs company-operated store classification requires Committee guidance. Revenue treatment unclear per current methodology.',
@@ -1018,10 +1018,10 @@ function getL0Name(c) { return TAX.L0.find(x=>x.c===c)?.n || c; }
 // ═══════════════════════════════════════════════════════════
 function wfBadge(status, rejCount=0, rejected=false) {
   const labels = {
-    pending_analyst:   ['Pending Analyst',   'bw-analyst'],
-    pending_qc:        ['Pending QC',        'bw-qc'],
-    pending_committee: ['Pending Committee', 'bw-committee'],
-    complete_gc:       ['Complete (GC)',      'bw-gc'],
+    PENDING_ANALYST: ['Pending Analyst', 'bw-analyst'],
+    PENDING_QC:      ['Pending QC',      'bw-qc'],
+    PENDING_IC:      ['Pending IC',      'bw-committee'],
+    COMPLETED:       ['Completed',       'bw-gc'],
   };
   const [label, cls] = labels[status] || [status, 'bc-unassigned'];
   const rejFlag = (rejected || rejCount>0) ? ` <span style="display:inline-flex;align-items:center;gap:2px;font-size:9px;padding:1px 5px;border-radius:3px;background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);margin-left:4px">${rejCount>1?rejCount+'x ':''}Rejected</span>` : '';
@@ -1029,9 +1029,9 @@ function wfBadge(status, rejCount=0, rejected=false) {
 }
 function typeBadge(type) {
   const m = {
-    fresh:         `<span class="badge bt-fresh">Fresh</span>`,
-    ar_update:     `<span class="badge bt-ar">AR Update</span>`,
-    invalidated_gc:`<span class="badge bt-inv">Invalidated</span>`,
+    FRESH:       `<span class="badge bt-fresh">Fresh</span>`,
+    AR_UPDATE:   `<span class="badge bt-ar">AR Update</span>`,
+    INVALIDATED: `<span class="badge bt-inv">Invalidated</span>`,
   };
   return m[type] || `<span class="badge bc-unassigned">${type}</span>`;
 }
@@ -1043,7 +1043,7 @@ function compBadge(s) {
   const m = {
     unassigned:  `<span class="badge bc-unassigned">Unassigned</span>`,
     wip:         `<span class="badge bc-wip">Work in Progress</span>`,
-    complete_gc: `<span class="badge bc-done">Complete (GC)</span>`,
+    COMPLETED: `<span class="badge bc-done">Completed</span>`,
   };
   return m[s] || s;
 }
@@ -1131,7 +1131,7 @@ function refreshBadges() {
   document.getElementById('nb-gc').textContent = GOLDEN.length;
   const myCount = currentRole==='analyst'
     ? WORKBENCH.filter(w=>w.assignedTo===currentUser.name).length
-    : WORKBENCH.filter(w=>w.wfStatus!=='complete_gc').length;
+    : WORKBENCH.filter(w=>w.wfStatus!=='COMPLETED').length;
   document.getElementById('nb-wb').textContent = myCount;
   document.getElementById('nb-ca').textContent = CORP_ACTIONS.filter(c=>c.status==='Under Review').length;
 }
@@ -1223,7 +1223,7 @@ function renderDashboard() {
   const PALETTE = ['#3b7eff','#0fb8a3','#f59e0b','#a78bfa','#ef4444','#22c55e','#f97316','#06b6d4','#84cc16','#ec4899'];
   const myItems = currentRole==='analyst'
     ? WORKBENCH.filter(w=>w.assignedTo===currentUser.name)
-    : WORKBENCH.filter(w=>!['complete_gc'].includes(w.wfStatus)).slice(0,6);
+    : WORKBENCH.filter(w=>!['COMPLETED'].includes(w.wfStatus)).slice(0,6);
 
   document.getElementById('view').innerHTML = `
   <div class="pg-hd">
@@ -1261,11 +1261,11 @@ function renderDashboard() {
       <div class="card-hd"><div><div class="card-title">Workbench Pipeline</div><div class="card-sub">Workflow status distribution</div></div></div>
       <div class="bar-chart" style="margin-bottom:12px">
         ${[
-          {label:'Pending Analyst',key:'pending_analyst',col:'var(--blue)'},
-          {label:'Pending QC',key:'pending_qc',col:'var(--purple)'},
-          {label:'Pending Committee',key:'pending_committee',col:'var(--amber)'},
+          {label:'Pending Analyst',key:'PENDING_ANALYST',col:'var(--blue)'},
+          {label:'Pending QC',key:'PENDING_QC',col:'var(--purple)'},
+          {label:'Pending IC',key:'PENDING_IC',col:'var(--amber)'},
           {label:'Rejected',key:'rejected',col:'var(--red)'},
-          {label:'Complete (GC)',key:'complete_gc',col:'var(--green)'},
+          {label:'Completed',key:'COMPLETED',col:'var(--green)'},
         ].map(({label,key,col}) => {
           const n = wbCounts[key]||0;
           const pct = Math.round(n/Math.max(WORKBENCH.length,1)*100);
@@ -1279,8 +1279,8 @@ function renderDashboard() {
       <div class="sep"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${typeBadge('fresh')} <span style="font-size:11px;color:var(--txt3);margin-right:6px">${typeCounts.fresh||0}</span>
-        ${typeBadge('ar_update')} <span style="font-size:11px;color:var(--txt3);margin-right:6px">${typeCounts.ar_update||0}</span>
-        ${typeBadge('invalidated_gc')} <span style="font-size:11px;color:var(--txt3)">${typeCounts.invalidated_gc||0}</span>
+        ${typeBadge('AR_UPDATE')} <span style="font-size:11px;color:var(--txt3);margin-right:6px">${typeCounts.ar_update||0}</span>
+        ${typeBadge('INVALIDATED')} <span style="font-size:11px;color:var(--txt3)">${typeCounts.invalidated_gc||0}</span>
       </div>
     </div>
   </div>
@@ -1356,7 +1356,7 @@ function renderGolden() {
         </div>
         <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="gcInv(this.value)">
           <option value="all">All Records</option>
-          <option value="active">Active GC</option>
+          <option value="active">Completed</option>
           <option value="invalidated">Invalidated</option>
         </select>
         <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="gcL0(this.value)">
@@ -1386,7 +1386,7 @@ function renderGolden() {
             <td style="font-size:12.5px">${esc(g.pushedBy)}</td>
             <td class="mono" style="font-size:11.5px;color:var(--txt2)">${esc(g.pushedDate)}</td>
             <td>
-              <span class="badge bw-gc">Active GC</span>${g.invalidated ? `<span style="display:inline-block;margin-left:6px;font-size:10px;color:var(--amber);font-family:var(--mono)" title="Correction in progress in Workbench">(correction in progress)</span>` : ''}
+              <span class="badge bw-gc">Completed</span>${g.invalidated ? `<span style="display:inline-block;margin-left:6px;font-size:10px;color:var(--amber);font-family:var(--mono)" title="Correction in progress in Workbench">(correction in progress)</span>` : ''}
             </td>
             ${canInv?`<td onclick="event.stopPropagation()"><button class="btn btn-danger btn-xs" onclick="openInvalidateModal('${g.id}')">Invalidate</button></td>`:''}
           </tr>`).join('')}
@@ -1465,17 +1465,17 @@ window.doInvalidate = function(gcId) {
   const prevWb = WORKBENCH.find(w => w.coId === g.coId);
   const prevAnalyst = prevWb?.assignedTo || getRRAnalyst();
 
-  const existingInvWb = WORKBENCH.find(w => w.coId === g.coId && w.type === 'invalidated_gc');
+  const existingInvWb = WORKBENCH.find(w => w.coId === g.coId && w.type === 'INVALIDATED');
   if (existingInvWb) {
     // Already an invalidated WB entry — update it with the new/merged years
     existingInvWb.pendingYears = [...new Set([...(existingInvWb.pendingYears||[]), ...yrs])].sort((a,b)=>a-b);
     existingInvWb.invalidatedYears = [...new Set([...(existingInvWb.invalidatedYears||[]), ...yrs])].sort((a,b)=>a-b);
-    existingInvWb.wfStatus = 'pending_analyst';
+    existingInvWb.wfStatus = 'PENDING_ANALYST';
   } else {
     WORKBENCH.push({
       id:'W'+uid(), coId:g.coId, coName:g.coName, isin:g.isin,
       l0:g.l0, l0Name:g.l0Name, assignedTo:prevAnalyst,
-      type:'invalidated_gc', wfStatus:'pending_analyst', completionStatus:'wip',
+      type:'INVALIDATED', wfStatus:'PENDING_ANALYST', completionStatus:'wip',
       yearsGC:g.yearsGC.filter(y=>!yrs.includes(y)), pendingYears:yrs, invalidatedYears:yrs,
       priority:'high', llm:false, rejCount:0, rejComment:'', committeeNote:'',
       submittedDate:null, createdDate:new Date().toISOString().split('T')[0],
@@ -1716,7 +1716,7 @@ function renderCompanies() {
           ${rows.map(c=>{
             const wb = WORKBENCH.find(w=>w.coId===c.id);
             const gc = GOLDEN.find(g=>g.coId===c.id);
-            const wfStatus = gc&&!gc.invalidated ? 'complete_gc' : wb ? wb.wfStatus : 'unassigned';
+            const wfStatus = gc&&!gc.invalidated ? 'COMPLETED' : wb ? wb.wfStatus : 'unassigned';
             const rejCount = wb?.rejCount||0;
             return `<tr class="clickable" onclick="openCoDetail('${c.id}')">
               <td>
@@ -1730,7 +1730,7 @@ function renderCompanies() {
               <td style="font-size:12.5px">${esc(c.country)}</td>
               <td style="font-size:12px;color:var(--txt2)">${esc(c.exchange||'—')}</td>
               <td>${statusBadge(c.status)}</td>
-              <td>${wfStatus==='complete_gc'?`<span class="badge bw-gc">Complete (GC)</span>`:wfStatus==='unassigned'?`<span class="badge bc-unassigned">Unassigned</span>`:wfBadge(wfStatus,rejCount,rejCount>0)}</td>
+              <td>${wfStatus==='COMPLETED'?`<span class="badge bw-gc">Completed</span>`:wfStatus==='unassigned'?`<span class="badge bc-unassigned">Unassigned</span>`:wfBadge(wfStatus,rejCount,rejCount>0)}</td>
               ${canEdit?`<td onclick="event.stopPropagation()"><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" onclick="openEditCo('${c.id}')">Edit</button><button class="btn btn-danger btn-xs" onclick="deleteCo('${c.id}')">Del</button></div></td>`:''}
             </tr>`;
           }).join('')}
@@ -1831,8 +1831,8 @@ function renderWorkbench() {
     return WORKBENCH.filter(w => {
       if (viewMode === 'mine') {
         if (currentRole === 'analyst'   && w.assignedTo !== currentUser.name) return false;
-        if (currentRole === 'qc'        && w.wfStatus !== 'pending_qc')        return false;
-        if (currentRole === 'committee' && w.wfStatus !== 'pending_committee') return false;
+        if (currentRole === 'qc'        && w.wfStatus !== 'PENDING_QC')        return false;
+        if (currentRole === 'committee' && w.wfStatus !== 'PENDING_IC') return false;
       }
       if (fStatus !== 'all' && w.wfStatus !== fStatus) return false;
       if (fType   !== 'all' && w.type !== fType)        return false;
@@ -1843,9 +1843,9 @@ function renderWorkbench() {
 
   function draw() {
     const rows    = getRows();
-    const myPend  = WORKBENCH.filter(w => w.assignedTo === currentUser.name && w.wfStatus === 'pending_analyst').length;
-    const qcPend  = WORKBENCH.filter(w => w.wfStatus === 'pending_qc').length;
-    const cmtPend = WORKBENCH.filter(w => w.wfStatus === 'pending_committee').length;
+    const myPend  = WORKBENCH.filter(w => w.assignedTo === currentUser.name && w.wfStatus === 'PENDING_ANALYST').length;
+    const qcPend  = WORKBENCH.filter(w => w.wfStatus === 'PENDING_QC').length;
+    const cmtPend = WORKBENCH.filter(w => w.wfStatus === 'PENDING_IC').length;
     const canRM   = currentRole === 'rm' || currentRole === 'admin';
 
     document.getElementById('view').innerHTML = `
@@ -1877,16 +1877,16 @@ function renderWorkbench() {
         </div>
         <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="wbStatus(this.value)">
           <option value="all"               ${fStatus==='all'               ?'selected':''}>All Statuses</option>
-          <option value="pending_analyst"   ${fStatus==='pending_analyst'   ?'selected':''}>Pending Analyst</option>
-          <option value="pending_qc"        ${fStatus==='pending_qc'        ?'selected':''}>Pending QC</option>
-          <option value="pending_committee" ${fStatus==='pending_committee' ?'selected':''}>Pending Committee</option>
-          <option value="complete_gc"       ${fStatus==='complete_gc'       ?'selected':''}>Complete (GC)</option>
+          <option value="PENDING_ANALYST"   ${fStatus==='PENDING_ANALYST'   ?'selected':''}>Pending Analyst</option>
+          <option value="PENDING_QC"        ${fStatus==='PENDING_QC'        ?'selected':''}>Pending QC</option>
+          <option value="PENDING_IC" ${fStatus==='PENDING_IC' ?'selected':''}>Pending IC</option>
+          <option value="COMPLETED"       ${fStatus==='COMPLETED'       ?'selected':''}>Completed</option>
         </select>
         <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="wbType(this.value)">
           <option value="all"          ${fType==='all'          ?'selected':''}>All Types</option>
-          <option value="fresh"        ${fType==='fresh'        ?'selected':''}>Fresh</option>
-          <option value="ar_update"    ${fType==='ar_update'    ?'selected':''}>AR Update</option>
-          <option value="invalidated_gc"${fType==='invalidated_gc'?'selected':''}>Invalidated</option>
+          <option value="FRESH"        ${fType==='FRESH'        ?'selected':''}>Fresh</option>
+          <option value="AR_UPDATE"    ${fType==='AR_UPDATE'    ?'selected':''}>AR Update</option>
+          <option value="INVALIDATED"${fType==='INVALIDATED'?'selected':''}>Invalidated</option>
         </select>
         <span style="margin-left:auto;font-size:11.5px;color:var(--txt3)">${rows.length} result${rows.length!==1?'s':''}</span>
       </div>
@@ -1905,9 +1905,9 @@ function renderWorkbench() {
         <tbody>
           ${rows.length === 0 ? `<tr><td colspan="8"><div class="empty-state"><div class="empty-title">No items match filters</div><div class="empty-sub">Try "All" view or clear filters</div></div></td></tr>` : ''}
           ${rows.map(w => {
-            const isMyItem    = currentRole === 'analyst' && w.assignedTo === currentUser.name && w.wfStatus === 'pending_analyst';
-            const isQCItem    = currentRole === 'qc'        && w.wfStatus === 'pending_qc';
-            const isCmtItem   = currentRole === 'committee' && w.wfStatus === 'pending_committee';
+            const isMyItem    = currentRole === 'analyst' && w.assignedTo === currentUser.name && w.wfStatus === 'PENDING_ANALYST';
+            const isQCItem    = currentRole === 'qc'        && w.wfStatus === 'PENDING_QC';
+            const isCmtItem   = currentRole === 'committee' && w.wfStatus === 'PENDING_IC';
             const rejCell     = w.rejCount > 0
               ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);font-family:var(--mono)">${w.rejCount}&times;</span>`
               : `<span style="color:var(--txt3);font-size:11.5px">—</span>`;
@@ -1925,7 +1925,7 @@ function renderWorkbench() {
               <td>${w.llm
                 ? `<span class="llm-chip">LLM</span>`
                 : `<span style="font-size:10.5px;color:var(--txt3);font-family:var(--mono)">Manual</span>`}</td>
-              <td><span class="badge ${{'pending_analyst':'bw-analyst','pending_qc':'bw-qc','pending_committee':'bw-committee','complete_gc':'bw-gc'}[w.wfStatus]||'bc-unassigned'}">${{'pending_analyst':'Pending Analyst','pending_qc':'Pending QC','pending_committee':'Pending Committee','complete_gc':'Complete (GC)'}[w.wfStatus]||w.wfStatus}</span></td>
+              <td><span class="badge ${{'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee','COMPLETED':'bw-gc'}[w.wfStatus]||'bc-unassigned'}">${{'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC','COMPLETED':'Completed'}[w.wfStatus]||w.wfStatus}</span></td>
               <td>${rejCell}</td>
               <td style="font-size:12.5px;color:var(--txt2)">${esc(w.assignedTo)}</td>
               <td>
@@ -1961,7 +1961,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
       ${rejNote}
       <button class="btn btn-primary btn-sm" onclick="submitForQC('${w.id}')">Submit for QC →</button>`;
   }
-  if (currentRole === 'qc' && w.wfStatus === 'pending_qc') {
+  if (currentRole === 'qc' && w.wfStatus === 'PENDING_QC') {
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">← Back</button>
       <div style="flex:1"></div>
@@ -1969,7 +1969,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
       <button class="btn btn-danger btn-sm" onclick="openQCModal('${w.id}','reject')">Reject</button>
       <button class="btn btn-success btn-sm" onclick="openQCModal('${w.id}','accept')">Accept → GC</button>`;
   }
-  if (currentRole === 'committee' && w.wfStatus === 'pending_committee') {
+  if (currentRole === 'committee' && w.wfStatus === 'PENDING_IC') {
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">← Back</button>
       <div style="flex:1"></div>
@@ -1993,12 +1993,12 @@ function renderCompanyReport(wbId) {
   let arPage = 1;
   const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
   // Core edit permission: analyst must be assigned and status pending_analyst
-  const canEdit = currentRole === 'analyst' && w.wfStatus === 'pending_analyst' && w.assignedTo === currentUser.name
+  const canEdit = currentRole === 'analyst' && w.wfStatus === 'PENDING_ANALYST' && w.assignedTo === currentUser.name
     || currentRole === 'rm';
 
   // For invalidated_gc items: only invalidatedYears are mutable; rest are GC-locked read-only
   // For all other types (fresh, ar_update): all pendingYears are editable
-  const isInvalidated = w.type === 'invalidated_gc';
+  const isInvalidated = w.type === 'INVALIDATED';
   const invYrs = w.invalidatedYears || [];
   const isEntireCompanyInvalidated = isInvalidated && (invYrs.length === 0 || invYrs.length >= (w.yearsGC.length + invYrs.length));
 
@@ -2018,7 +2018,7 @@ function renderCompanyReport(wbId) {
   }
 
   function buildWFSteps() {
-    const steps = ['pending_analyst','pending_qc','pending_committee','complete_gc'];
+    const steps = ['PENDING_ANALYST','PENDING_QC','PENDING_IC','COMPLETED'];
     const labels = ['Analyst','QC','Committee','GC'];
     const curIdx = steps.indexOf(w.wfStatus);
     const isRej = w.wfStatus==='rejected';
@@ -2310,7 +2310,7 @@ function renderCompanyReport(wbId) {
     const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
     if (!wb.yearsGC.includes(activeYear)) wb.yearsGC = [...wb.yearsGC,activeYear].sort();
     wb.pendingYears = (wb.pendingYears||[]).filter(y=>y!==activeYear);
-    wb.wfStatus = 'pending_qc';
+    wb.wfStatus = 'PENDING_QC';
     wb.submittedDate = new Date().toISOString().split('T')[0];
     AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Submitted for QC',
       co:wb.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
@@ -2329,8 +2329,8 @@ window.submitQC = function(wbId, action) {
   if (!comment) { toast('Comment is mandatory.','err'); return; }
   const w = WORKBENCH.find(x=>x.id===wbId); if (!w) return;
   if (dec==='accept') {
-    w.wfStatus = 'complete_gc';
-    w.completionStatus = 'complete_gc';
+    w.wfStatus = 'COMPLETED';
+    w.completionStatus = 'COMPLETED';
     const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
     const existing = GOLDEN.find(g=>g.coId===w.coId);
     if (existing) {
@@ -2354,7 +2354,7 @@ window.submitQC = function(wbId, action) {
     w.rejCount = (w.rejCount||0)+1;
     w.rejComment = comment;
     if (w.rejCount >= 2) {
-      w.wfStatus = 'pending_committee';
+      w.wfStatus = 'PENDING_IC';
       AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
         action:`QC Rejected (${w.rejCount}x) → Escalated to Committee`,co:w.coName,year:'—',
         ts:new Date().toLocaleString('en-GB'),detail:comment});
@@ -2375,7 +2375,7 @@ window.submitCommittee = function(wbId) {
   const note = document.getElementById('comm-note').value.trim();
   if (!note) { toast('Resolution note is required.','err'); return; }
   const w = WORKBENCH.find(x=>x.id===wbId); if (!w) return;
-  w.wfStatus = 'pending_analyst';
+  w.wfStatus = 'PENDING_ANALYST';
   w.committeeNote = note;
   w.rejCount = 0;
   AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'committee',
@@ -2397,7 +2397,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
     const rejNote = w.rejCount > 0
       ? `<span style="font-size:11px;color:var(--red);font-weight:600;padding:3px 8px;border-radius:4px;background:var(--red-bg);border:1px solid var(--red-bd)">${w.rejCount > 1 ? w.rejCount + 'x ' : ''}Rejected — address QC feedback</span>`
       : '';
-    const invNote = w.type === 'invalidated_gc'
+    const invNote = w.type === 'INVALIDATED'
       ? (() => {
           const invYrs2 = w.invalidatedYears || [];
           const allOpen = invYrs2.length === 0;
@@ -2414,7 +2414,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
   }
 
   // QC: clear accept / reject buttons
-  if (role === 'qc' && w.wfStatus === 'pending_qc') {
+  if (role === 'qc' && w.wfStatus === 'PENDING_QC') {
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">← Back</button>
       <div style="flex:1"></div>
@@ -2424,7 +2424,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
   }
 
   // COMMITTEE: resolve only (no accept/reject)
-  if (role === 'committee' && w.wfStatus === 'pending_committee') {
+  if (role === 'committee' && w.wfStatus === 'PENDING_IC') {
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">← Back</button>
       <div style="flex:1"></div>
@@ -2582,7 +2582,7 @@ window.doAddCo = function() {
   WORKBENCH.push({
     id:'W'+uid(), coId:newCo.id, coName:newCo.name, isin:newCo.isin,
     l0:'', l0Name:'Unclassified', assignedTo:analyst,
-    type:'fresh', wfStatus:'pending_analyst', completionStatus:'wip',
+    type:'FRESH', wfStatus:'PENDING_ANALYST', completionStatus:'wip',
     yearsGC:[], pendingYears:[...YEARS], priority:'medium',
     llm:false, rejCount:0, rejComment:'', committeeNote:'',
     submittedDate:null, createdDate:newCo.addedDate,
