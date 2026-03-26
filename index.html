@@ -3897,247 +3897,235 @@ window.exportAudit = function() {
 // ─── Assignment Management Page ───────────────────────────────────────────
 function renderAssignments() {
   if (currentRole !== 'rm' && currentRole !== 'admin') {
-    document.getElementById('view').innerHTML = '<div class="empty-state"><div class="empty-ico">🔒</div><div class="empty-title">Access Restricted</div><div class="empty-sub">Assignment Management is only available to RM and Admin roles.</div></div>';
+    document.getElementById('view').innerHTML = '<div class="empty-state"><div class="empty-ico">&#x1F512;</div><div class="empty-title">Access Restricted</div><div class="empty-sub">Assignment Management is only available to RM and Admin roles.</div></div>';
     return;
   }
 
-  // ── Filter state ──
-  var fAna    = window._asgFAna    || '';
-  var fQC     = window._asgFQC     || '';
-  var fSect   = window._asgFSect   || '';
-  var fStat   = window._asgFStat   || '';
-  var fType   = window._asgFType   || '';
-  var sCol    = window._asgSCol    || '';
-  var sDir    = window._asgSDir    || 'asc';
+  // ── Persistent state ──────────────────────────────────────────────
+  var fSect = window._asgFSect || '';
+  var fStat = window._asgFStat || '';
+  var fType = window._asgFType || '';
+  var fAna  = window._asgFAna  || '';
+  var fQC   = window._asgFQC   || '';
+  var sCol  = window._asgSCol  || '';
+  var sDir  = window._asgSDir  || 'asc';
+  // Selected IDs survive re-renders (filter changes don't clear selection)
+  if (!window._asgSel) window._asgSel = {};
 
-  // ── Workbench pool (exclude COMPLETED) ──
+  // ── Pool: exclude COMPLETED ──
   var pool = WORKBENCH.filter(function(w){ return w.wfStatus !== 'COMPLETED'; });
 
-  // ── Workload summary per person ──
-  var anaLoad = {};
-  var qcLoad  = {};
-  ROLE_USERS.analyst.forEach(function(u){ anaLoad[u.name] = 0; });
-  ROLE_USERS.qc.forEach(function(u){     qcLoad[u.name]  = 0; });
+  // ── Workload tallies ──
+  var anaLoad = {}; ROLE_USERS.analyst.forEach(function(u){ anaLoad[u.name] = 0; });
+  var qcLoad  = {}; ROLE_USERS.qc.forEach(function(u){     qcLoad[u.name]  = 0; });
   pool.forEach(function(w){
-    if (anaLoad[w.assignedTo]   !== undefined) anaLoad[w.assignedTo]++;
-    if (qcLoad[w.qcAssignedTo]  !== undefined) qcLoad[w.qcAssignedTo]++;
+    if (anaLoad[w.assignedTo]  !== undefined) anaLoad[w.assignedTo]++;
+    if (qcLoad[w.qcAssignedTo] !== undefined) qcLoad[w.qcAssignedTo]++;
   });
+  var maxAna = Math.max.apply(null, Object.values(anaLoad).concat([1]));
+  var maxQC  = Math.max.apply(null, Object.values(qcLoad).concat([1]));
 
   // ── Sector list ──
   var sects = []; var seenS = {};
   pool.forEach(function(w){ if(w.l0Name&&!seenS[w.l0Name]){ seenS[w.l0Name]=1; sects.push(w.l0Name); } });
   sects.sort();
 
-  // ── Analyst / QC option lists ──
-  function anaOpts(sel) {
-    return '<option value="">All Analysts</option>'+ROLE_USERS.analyst.map(function(u){
-      return '<option value="'+u.name+'"'+(sel===u.name?' selected':'')+'>'+u.name+' ('+( anaLoad[u.name]||0)+')</option>';
-    }).join('');
-  }
-  function qcOpts(sel) {
-    return '<option value="">All QC</option>'+ROLE_USERS.qc.map(function(u){
-      return '<option value="'+u.name+'"'+(sel===u.name?' selected':'')+'>'+u.name+' ('+( qcLoad[u.name]||0)+')</option>';
-    }).join('');
-  }
-  function sectOpts() {
-    var o = '<option value="">All Sectors</option>';
-    sects.forEach(function(s){ o += '<option value="'+s+'"'+(fSect===s?' selected':'')+'>'+s+'</option>'; });
-    return o;
-  }
-
-  // ── Apply filters ──
+  // ── Filter rows ──
   var rows = pool.filter(function(w){
-    if (fAna  && w.assignedTo   !== fAna)  return false;
-    if (fQC   && w.qcAssignedTo !== fQC)   return false;
     if (fSect && w.l0Name       !== fSect) return false;
     if (fStat && w.wfStatus     !== fStat) return false;
     if (fType && w.type         !== fType) return false;
+    if (fAna  && w.assignedTo   !== fAna)  return false;
+    if (fQC   && w.qcAssignedTo !== fQC)   return false;
     return true;
   });
-
-  // ── Sort ──
   if (sCol) {
     rows = rows.slice().sort(function(a,b){
-      var av = a[sCol]||'', bv = b[sCol]||'';
-      return sDir==='asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      var av=a[sCol]||'', bv=b[sCol]||'';
+      return sDir==='asc'?String(av).localeCompare(String(bv)):String(bv).localeCompare(String(av));
     });
   }
 
-  // ── Workload bar helper ──
+  // How many visible rows are currently selected
+  var selInView = rows.filter(function(w){ return window._asgSel[w.id]; }).length;
+  var allChecked = rows.length > 0 && selInView === rows.length;
+  var totalSel   = Object.keys(window._asgSel).filter(function(k){ return window._asgSel[k]; }).length;
+
+  // ── Helpers ──
   function loadBar(n, max, color) {
     var w = max ? Math.round(n/max*100) : 0;
     return '<div style="display:flex;align-items:center;gap:6px">'
-      +'<div style="width:60px;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">'
+      +'<div style="width:56px;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">'
       +'<div style="width:'+w+'%;height:100%;background:'+color+';border-radius:3px"></div></div>'
-      +'<span class="mono" style="font-size:11px;color:var(--txt3)">'+n+'</span></div>';
+      +'<span class="mono" style="font-size:10.5px;color:var(--txt3)">'+n+'</span></div>';
   }
-  var maxAna = Math.max.apply(null, Object.values(anaLoad).concat([1]));
-  var maxQC  = Math.max.apply(null, Object.values(qcLoad).concat([1]));
-
-  // ── Workload summary cards ──
-  var anaCards = ROLE_USERS.analyst.map(function(u){
-    var n = anaLoad[u.name]||0;
-    var col = n > maxAna*0.7 ? 'var(--amber)' : 'var(--blue)';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer" onclick="window._asgFAna=\''+u.name+'\';renderAssignments()">'
-      +'<div style="width:30px;height:30px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">'+u.initials+'</div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name)+'</div>'
-      +loadBar(n, maxAna, col)
-      +'</div></div>';
-  }).join('');
-
-  var qcCards = ROLE_USERS.qc.map(function(u){
-    var n = qcLoad[u.name]||0;
-    var col = n > maxQC*0.7 ? 'var(--amber)' : 'var(--purple)';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer" onclick="window._asgFQC=\''+u.name+'\';renderAssignments()">'
-      +'<div style="width:30px;height:30px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">'+u.initials+'</div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name)+'</div>'
-      +loadBar(n, maxQC, col)
-      +'</div></div>';
-  }).join('');
-
-  // ── Status / type labels ──
   var wfLabel = {'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC'};
   var wfCls   = {'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee'};
 
+  // ── Workload cards ──
+  function mkCard(u, n, max, bg, filterKey) {
+    var col = n > max*0.7 ? 'var(--amber)' : bg;
+    var active = (filterKey==='ana' ? fAna : fQC) === u.name;
+    var filterVal = active ? '' : u.name;
+    var filterKey2 = filterKey==='ana' ? '_asgFAna' : '_asgFQC';
+    var bdr = active ? 'var(--blue)' : 'var(--border2)';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg2);border:1px solid '+bdr+';border-radius:var(--radius);cursor:pointer"'
+      +' onclick="window.'+filterKey2+'=\''+filterVal+'\';renderAssignments()">'
+      +'<div style="width:28px;height:28px;border-radius:50%;background:'+bg+';display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#fff;flex-shrink:0">'+u.initials+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name)+'</div>'
+      +loadBar(n, max, col)
+      +'</div></div>';
+  }
+  var anaCards = ROLE_USERS.analyst.map(function(u){ return mkCard(u, anaLoad[u.name]||0, maxAna, 'var(--blue)', 'ana'); }).join('');
+  var qcCards  = ROLE_USERS.qc.map(function(u){     return mkCard(u, qcLoad[u.name]||0,  maxQC,  'var(--purple)', 'qc'); }).join('');
+
+  // ── Filter option builders ──
+  function selOpts(list, cur, allLabel) {
+    var o = '<option value="">'+allLabel+'</option>';
+    list.forEach(function(item){
+      var val = typeof item==='string' ? item : item.name;
+      var lbl = typeof item==='string' ? item : item.name+' ('+((item.role==='ana'?anaLoad:qcLoad)[item.name]||0)+')';
+      o += '<option value="'+val+'"'+(cur===val?' selected':'')+'>'+lbl+'</option>';
+    });
+    return o;
+  }
+  var anaListF = ROLE_USERS.analyst.map(function(u){ return {name:u.name, role:'ana'}; });
+  var qcListF  = ROLE_USERS.qc.map(function(u){     return {name:u.name, role:'qc'};  });
+
+  // ── Assign-to dropdowns (for sticky bar) ──
+  var anaAssignOpts = '<option value="">Keep existing</option>'
+    +ROLE_USERS.analyst.map(function(u){
+      return '<option value="'+u.name+'">'+u.name+' ('+( anaLoad[u.name]||0)+')</option>';
+    }).join('');
+  var qcAssignOpts = '<option value="">Keep existing</option>'
+    +ROLE_USERS.qc.map(function(u){
+      return '<option value="'+u.name+'">'+u.name+' ('+( qcLoad[u.name]||0)+')</option>';
+    }).join('');
+
+  // ── Leave cover dropdowns ──
+  var leaveOpts = '<option value="">-- select person --</option>'
+    +ROLE_USERS.analyst.map(function(u){ return '<option value="'+u.name+':analyst">'+u.name+' (Analyst)</option>'; }).join('')
+    +ROLE_USERS.qc.map(function(u){     return '<option value="'+u.name+':qc">'+u.name+' (QC)</option>'; }).join('');
+
   // ── Table rows ──
-  var tblRows = rows.map(function(w){
-    var anaSelOpts = ROLE_USERS.analyst.map(function(u){
-      return '<option value="'+u.name+'"'+(w.assignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
-    }).join('');
-    var qcSelOpts = ROLE_USERS.qc.map(function(u){
-      return '<option value="'+u.name+'"'+(w.qcAssignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
-    }).join('');
-    return '<tr>'
-      +'<td style="font-weight:600;font-size:12.5px;min-width:160px">'+esc(w.coName)
-      +'<div class="mono" style="font-size:10px;color:var(--txt3)">'+esc(w.isin)+'</div></td>'
-      +'<td>'+typeBadge(w.type)+'</td>'
-      +'<td><span class="badge '+(wfCls[w.wfStatus]||'bc-unassigned')+'">'+(wfLabel[w.wfStatus]||w.wfStatus)+'</span></td>'
-      +'<td onclick="event.stopPropagation()">'
-      +'<select class="fs" style="padding:4px 24px 4px 8px;font-size:11.5px" onchange="asgInlineSet(\''+w.id+'\',\'analyst\',this.value)">'+anaSelOpts+'</select></td>'
-      +'<td onclick="event.stopPropagation()">'
-      +'<select class="fs" style="padding:4px 24px 4px 8px;font-size:11.5px" onchange="asgInlineSet(\''+w.id+'\',\'qc\',this.value)">'+qcSelOpts+'</select></td>'
-      +'<td class="mono" style="font-size:11px;color:var(--txt3)">'+esc(w.createdDate||'')+'</td>'
-      +'</tr>';
-  }).join('');
+  var tblRows = rows.length === 0
+    ? '<tr><td colspan="7"><div class="empty-state"><div class="empty-title">No tasks match filters</div></div></td></tr>'
+    : rows.map(function(w){
+        var chk = window._asgSel[w.id] ? ' checked' : '';
+        return '<tr style="'+(window._asgSel[w.id]?'background:var(--blue-bg)':'')+'">'
+          +'<td style="width:36px;text-align:center" onclick="event.stopPropagation()">'
+          +'<input type="checkbox" style="width:15px;height:15px;accent-color:var(--blue);cursor:pointer"'
+          +chk+' onchange="asgToggleSel(\''+w.id+'\',this.checked)"></td>'
+          +'<td style="font-weight:600;font-size:12.5px;min-width:160px">'+esc(w.coName)
+          +'<div class="mono" style="font-size:10px;color:var(--txt3)">'+esc(w.isin)+'</div></td>'
+          +'<td>'+typeBadge(w.type)+'</td>'
+          +'<td><span class="badge '+(wfCls[w.wfStatus]||'bc-unassigned')+'">'+(wfLabel[w.wfStatus]||w.wfStatus)+'</span></td>'
+          +'<td>'
+          +'<div style="font-size:11.5px;font-weight:500">'+esc(w.assignedTo||'—')+'</div>'
+          +'<div style="font-size:10px;color:var(--txt3)">Analyst</div>'
+          +'</td>'
+          +'<td>'
+          +'<div style="font-size:11.5px;font-weight:500">'+esc(w.qcAssignedTo||'—')+'</div>'
+          +'<div style="font-size:10px;color:var(--txt3)">QC</div>'
+          +'</td>'
+          +'<td class="mono" style="font-size:11px;color:var(--txt3)">'+esc(w.createdDate||'')+'</td>'
+          +'</tr>';
+      }).join('');
 
-  // ── Bulk assign target options ──
-  var bulkAnaOpts = '<option value="">-- select analyst --</option>'+ROLE_USERS.analyst.map(function(u){
-    return '<option value="'+u.name+'">'+u.name+' ('+( anaLoad[u.name]||0)+')</option>';
-  }).join('');
-  var bulkQCOpts = '<option value="">-- select QC --</option>'+ROLE_USERS.qc.map(function(u){
-    return '<option value="'+u.name+'">'+u.name+' ('+( qcLoad[u.name]||0)+')</option>';
-  }).join('');
-
-  // ── Leave cover: person dropdowns ──
-  var leaveAnaOpts = '<option value="">-- analyst on leave --</option>'+ROLE_USERS.analyst.map(function(u){
-    return '<option value="'+u.name+':analyst">'+u.name+' (Analyst)</option>';
-  }).join('');
-  var leaveQCOpts = ROLE_USERS.qc.map(function(u){
-    return '<option value="'+u.name+':qc">'+u.name+' (QC)</option>';
-  }).join('');
-  var leaveAllOpts = leaveAnaOpts + leaveQCOpts;
+  // ── Sticky assignment bar (shown when selection > 0) ──
+  var stickyBar = totalSel > 0
+    ? '<div id="asg-bar" style="position:sticky;bottom:0;z-index:20;margin:0 -24px -22px;padding:12px 24px;'
+      +'background:var(--bg1);border-top:2px solid var(--blue);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+      +'<span style="font-size:12.5px;font-weight:700;color:var(--blue)">'+totalSel+' selected</span>'
+      +'<div class="fg" style="margin:0;display:flex;align-items:center;gap:6px">'
+      +'<label style="font-size:12px;color:var(--txt3);white-space:nowrap">Assign Analyst</label>'
+      +'<select class="fs" id="bar-analyst" style="padding:5px 24px 5px 8px;min-width:180px">'+anaAssignOpts+'</select>'
+      +'</div>'
+      +'<div class="fg" style="margin:0;display:flex;align-items:center;gap:6px">'
+      +'<label style="font-size:12px;color:var(--txt3);white-space:nowrap">Assign QC</label>'
+      +'<select class="fs" id="bar-qc" style="padding:5px 24px 5px 8px;min-width:180px">'+qcAssignOpts+'</select>'
+      +'</div>'
+      +'<input class="fi" id="bar-reason" placeholder="Reason (required)" style="flex:1;min-width:160px;padding:6px 10px">'
+      +'<button class="btn btn-primary" onclick="asgApplyBar()">Apply</button>'
+      +'<button class="btn btn-ghost" onclick="asgClearSel()">Clear selection</button>'
+      +'</div>'
+    : '';
 
   // ── Render ──
   document.getElementById('view').innerHTML = ''
     +'<div style="max-width:1400px">'
-
-    // Page header
     +'<div class="pg-hd"><div>'
     +'<div class="pg-title">Assignment Management</div>'
-    +'<div class="pg-sub">Manage analyst and QC assignments across the classification queue</div>'
+    +'<div class="pg-sub">Select companies and assign analyst and QC · '+pool.length+' open tasks</div>'
     +'</div></div>'
 
-    // ── Workload overview ──
+    // Workload overview
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
-    +'<div class="card"><div class="card-hd"><div>'
-    +'<div class="card-title">Analyst Workload</div>'
-    +'<div class="card-sub">Open tasks assigned · click to filter</div>'
-    +'</div></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+anaCards+'</div></div>'
-    +'<div class="card"><div class="card-hd"><div>'
-    +'<div class="card-title">QC Workload</div>'
-    +'<div class="card-sub">Open tasks assigned · click to filter</div>'
-    +'</div></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+qcCards+'</div></div>'
+    +'<div class="card"><div class="card-hd"><div><div class="card-title">Analyst Workload</div>'
+    +'<div class="card-sub">Open tasks · click to filter table</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+anaCards+'</div></div>'
+    +'<div class="card"><div class="card-hd"><div><div class="card-title">QC Workload</div>'
+    +'<div class="card-sub">Open tasks · click to filter table</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+qcCards+'</div></div>'
     +'</div>'
-
-    // ── Bulk assign + leave cover ──
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
-
-    // Bulk assign
-    +'<div class="card">'
-    +'<div class="card-hd"><div>'
-    +'<div class="card-title">Bulk Assignment</div>'
-    +'<div class="card-sub">Assign all filtered tasks to a selected person</div>'
-    +'</div></div>'
-    +'<div style="display:flex;flex-direction:column;gap:10px">'
-    +'<div style="font-size:12px;color:var(--txt2);padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border2)">'
-    +'<strong>'+rows.length+'</strong> tasks match current filters and will be reassigned.'
-    +'</div>'
-    +'<div class="fg"><label class="fl">Reassign Analyst to</label>'
-    +'<select class="fs" id="bulk-analyst">'+bulkAnaOpts+'</select></div>'
-    +'<div class="fg"><label class="fl">Reassign QC to</label>'
-    +'<select class="fs" id="bulk-qc">'+bulkQCOpts+'</select></div>'
-    +'<div class="fg"><label class="fl">Reason <span class="req">*</span></label>'
-    +'<input class="fi" id="bulk-reason" placeholder="e.g. Rebalancing after leave coverage"></div>'
-    +'<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="asgBulkAssign()">Apply Bulk Assignment</button>'
-    +'</div></div>'
 
     // Leave cover
-    +'<div class="card">'
-    +'<div class="card-hd"><div>'
-    +'<div class="card-title">Leave Cover</div>'
-    +'<div class="card-sub">Instantly redistribute all tasks from one person to the rest of the team</div>'
-    +'</div></div>'
-    +'<div style="display:flex;flex-direction:column;gap:10px">'
-    +'<div style="font-size:12px;color:var(--amber);padding:8px 10px;background:var(--amber-bg);border-radius:var(--radius);border:1px solid var(--amber-bd)">'
-    +'Tasks are redistributed round-robin across the remaining team. This cannot be undone automatically — use Audit Trail to review.'
-    +'</div>'
-    +'<div class="fg"><label class="fl">Person Going on Leave</label>'
-    +'<select class="fs" id="leave-person">'+leaveAllOpts+'</select></div>'
-    +'<div class="fg"><label class="fl">Reason / Note</label>'
-    +'<input class="fi" id="leave-reason" placeholder="e.g. Annual leave 28 Mar – 4 Apr"></div>'
-    +'<button class="btn btn-warn" style="width:100%;justify-content:center" onclick="asgLeaveCover()">Redistribute Tasks</button>'
+    +'<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-hd"><div><div class="card-title">Leave Cover</div>'
+    +'<div class="card-sub">Redistribute all tasks from one person round-robin across remaining team</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">'
+    +'<div class="fg" style="margin:0"><label class="fl">Person going on leave</label>'
+    +'<select class="fs" id="leave-person">'+leaveOpts+'</select></div>'
+    +'<div class="fg" style="margin:0"><label class="fl">Reason / Note <span class="req">*</span></label>'
+    +'<input class="fi" id="leave-reason" placeholder="e.g. Annual leave 28 Mar - 4 Apr"></div>'
+    +'<button class="btn btn-warn" onclick="asgLeaveCover()">Redistribute Tasks</button>'
     +'</div></div>'
 
-    +'</div>'
-
-    // ── Filter + table ──
+    // Filter bar + table
     +'<div class="tbl-wrap">'
     +'<div class="tbl-bar" style="flex-wrap:wrap;gap:8px">'
-    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFAna=this.value;renderAssignments()">'+anaOpts(fAna)+'</select>'
-    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFQC=this.value;renderAssignments()">'+qcOpts(fQC)+'</select>'
-    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFSect=this.value;renderAssignments()">'+sectOpts()+'</select>'
-    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFStat=this.value;renderAssignments()">'
+    +'<select class="fs" style="width:auto;padding:5px 24px 5px 8px" onchange="window._asgFSect=this.value;renderAssignments()">'
+    +selOpts(sects, fSect, 'All Sectors')+'</select>'
+    +'<select class="fs" style="width:auto;padding:5px 24px 5px 8px" onchange="window._asgFStat=this.value;renderAssignments()">'
     +'<option value="">All Statuses</option>'
     +'<option value="PENDING_ANALYST"'+(fStat==='PENDING_ANALYST'?' selected':'')+'>Pending Analyst</option>'
     +'<option value="PENDING_QC"'+(fStat==='PENDING_QC'?' selected':'')+'>Pending QC</option>'
     +'<option value="PENDING_IC"'+(fStat==='PENDING_IC'?' selected':'')+'>Pending IC</option>'
     +'</select>'
-    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFType=this.value;renderAssignments()">'
+    +'<select class="fs" style="width:auto;padding:5px 24px 5px 8px" onchange="window._asgFType=this.value;renderAssignments()">'
     +'<option value="">All Types</option>'
     +'<option value="FRESH"'+(fType==='FRESH'?' selected':'')+'>Fresh</option>'
     +'<option value="AR_UPDATE"'+(fType==='AR_UPDATE'?' selected':'')+'>AR Update</option>'
     +'<option value="INVALIDATED"'+(fType==='INVALIDATED'?' selected':'')+'>Correction</option>'
     +'</select>'
+    +'<select class="fs" style="width:auto;padding:5px 24px 5px 8px" onchange="window._asgFAna=this.value;renderAssignments()">'
+    +selOpts(anaListF, fAna, 'All Analysts')+'</select>'
+    +'<select class="fs" style="width:auto;padding:5px 24px 5px 8px" onchange="window._asgFQC=this.value;renderAssignments()">'
+    +selOpts(qcListF, fQC, 'All QC')+'</select>'
     +'<span style="margin-left:auto;font-size:11.5px;color:var(--txt3)">'+rows.length+' tasks</span>'
-    +'<button class="btn btn-ghost btn-sm" onclick="window._asgFAna=\'\';window._asgFQC=\'\';window._asgFSect=\'\';window._asgFStat=\'\';window._asgFType=\'\';renderAssignments()">Clear</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="window._asgFSect=\'\';window._asgFStat=\'\';window._asgFType=\'\';window._asgFAna=\'\';window._asgFQC=\'\';renderAssignments()">Clear filters</button>'
     +'</div>'
     +'<table class="dt">'
     +'<thead><tr>'
-    +'<th class="sortable" onclick="window._asgSCol=\'coName\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">Company</th>'
+    +'<th style="width:36px;text-align:center" onclick="event.stopPropagation()">'
+    +'<input type="checkbox" style="width:15px;height:15px;accent-color:var(--blue);cursor:pointer"'
+    +(allChecked?' checked':'')+' onchange="asgToggleAll(this.checked,'+(JSON.stringify(rows.map(function(w){return w.id;})))+')" title="Select all visible">'
+    +'</th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'coName\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Company <span class="sort-ico">&#x21C5;</span></th>'
     +'<th>Type</th><th>Status</th>'
-    +'<th class="sortable" onclick="window._asgSCol=\'assignedTo\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">Analyst</th>'
-    +'<th class="sortable" onclick="window._asgSCol=\'qcAssignedTo\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">QC Reviewer</th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'assignedTo\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Current Analyst <span class="sort-ico">&#x21C5;</span></th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'qcAssignedTo\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Current QC <span class="sort-ico">&#x21C5;</span></th>'
     +'<th>Created</th>'
     +'</tr></thead>'
-    +'<tbody>'+(tblRows||'<tr><td colspan="6"><div class="empty-state"><div class="empty-title">No tasks match</div></div></td></tr>')+'</tbody>'
-    +'</table></div>'
+    +'<tbody>'+tblRows+'</tbody>'
+    +'</table>'
+    +stickyBar
+    +'</div>'
 
     +'</div>';
 }
+
 
 // ── Inline single-cell reassign ──────────────────────────────────────────
 window.asgInlineSet = function(wbId, field, val) {
@@ -4153,44 +4141,49 @@ window.asgInlineSet = function(wbId, field, val) {
   toast(w.coName+': '+(field==='analyst'?'Analyst':'QC')+' updated to '+val+'.','ok');
 };
 
-// ── Bulk assignment ──────────────────────────────────────────────────────
-window.asgBulkAssign = function() {
-  var fAna  = window._asgFAna  || '';
-  var fQC   = window._asgFQC   || '';
-  var fSect = window._asgFSect || '';
-  var fStat = window._asgFStat || '';
-  var fType = window._asgFType || '';
-  var na    = document.getElementById('bulk-analyst').value;
-  var nq    = document.getElementById('bulk-qc').value;
-  var rs    = (document.getElementById('bulk-reason').value||'').trim();
-  if (!na && !nq) { toast('Select at least one target (Analyst or QC).','err'); return; }
+// ── Multi-select helpers ──────────────────────────────────────────────────
+window.asgToggleSel = function(wbId, checked) {
+  if (!window._asgSel) window._asgSel = {};
+  window._asgSel[wbId] = checked;
+  renderAssignments();
+};
+window.asgToggleAll = function(checked, ids) {
+  if (!window._asgSel) window._asgSel = {};
+  ids.forEach(function(id){ window._asgSel[id] = checked; });
+  renderAssignments();
+};
+window.asgClearSel = function() {
+  window._asgSel = {};
+  renderAssignments();
+};
+// ── Apply sticky bar assignment to selected tasks ─────────────────────────
+window.asgApplyBar = function() {
+  var na = document.getElementById('bar-analyst').value;
+  var nq = document.getElementById('bar-qc').value;
+  var rs = (document.getElementById('bar-reason').value||'').trim();
+  if (!na && !nq) { toast('Select an Analyst or QC to assign.','err'); return; }
   if (!rs)        { toast('Reason is required.','err'); return; }
-  var targets = WORKBENCH.filter(function(w){
-    if (w.wfStatus === 'COMPLETED') return false;
-    if (fAna  && w.assignedTo   !== fAna)  return false;
-    if (fQC   && w.qcAssignedTo !== fQC)   return false;
-    if (fSect && w.l0Name       !== fSect) return false;
-    if (fStat && w.wfStatus     !== fStat) return false;
-    if (fType && w.type         !== fType) return false;
-    return true;
-  });
-  if (!targets.length) { toast('No tasks match the current filters.','warn'); return; }
+  var selIds = Object.keys(window._asgSel).filter(function(k){ return window._asgSel[k]; });
+  if (!selIds.length) { toast('No tasks selected.','warn'); return; }
   var count = 0;
-  targets.forEach(function(w){
+  selIds.forEach(function(id){
+    var w = WORKBENCH.find(function(x){ return x.id===id; }); if(!w) return;
     var ch = [];
     if (na && na !== w.assignedTo)   { ch.push('Analyst: '+w.assignedTo+' to '+na);   w.assignedTo   = na; }
     if (nq && nq !== w.qcAssignedTo) { ch.push('QC: '+w.qcAssignedTo+' to '+nq);     w.qcAssignedTo = nq; }
     if (ch.length) {
       count++;
       AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
-        action:'Bulk Reassigned', co:w.coName, year:'--',
+        action:'Task Reassigned', co:w.coName, year:'--',
         ts:new Date().toLocaleString('en-GB'),
         detail:ch.join(' | ')+'. Reason: '+rs });
     }
   });
-  toast('Bulk assigned: '+count+' task'+(count!==1?'s':'')+' updated.','ok');
+  window._asgSel = {};
+  toast('Updated '+count+' task'+(count!==1?'s':'')+'.','ok');
   renderAssignments();
 };
+
 
 // ── Leave cover: round-robin redistribute ────────────────────────────────
 window.asgLeaveCover = function() {
