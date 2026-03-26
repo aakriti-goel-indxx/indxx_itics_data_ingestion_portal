@@ -112,9 +112,9 @@ select option { background: var(--bg2); color: var(--txt); }
 ═══════════════════════════════════════════════════ */
 #shell { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
 #sidebar { width: var(--nav-w); min-width: var(--nav-w); background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 20; }
-#main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: auto; }
 #topbar { height: var(--topbar-h); min-height: var(--topbar-h); background: var(--bg1); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; }
-#view { flex: 1; overflow-y: auto; padding: 22px 24px; }
+#view { flex: 1; overflow-y: auto; overflow-x: auto; padding: 22px 24px; }
 #view.no-pad { padding: 0; }
 
 /* ═══════════════════════════════════════════════════
@@ -320,9 +320,9 @@ select option { background: var(--bg2); color: var(--txt); }
 /* ═══════════════════════════════════════════════════
    TABLES
 ═══════════════════════════════════════════════════ */
-.tbl-wrap { background: var(--bg1); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.tbl-wrap { background: var(--bg1); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: auto; }
 .tbl-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-table.dt { width: 100%; border-collapse: collapse; }
+table.dt { width: max-content; min-width: 100%; border-collapse: collapse; }
 table.dt th {
   padding: 9px 12px; text-align: left;
   font-size: 10.5px; font-weight: 600; color: var(--txt3);
@@ -512,12 +512,12 @@ select.fs { appearance: none; background-image: url("data:image/svg+xml,%3Csvg x
 /* ═══════════════════════════════════════════════════
    SPLIT VIEW (Company Report)
 ═══════════════════════════════════════════════════ */
-.split-view { display: flex; height: calc(100vh - var(--topbar-h)); overflow: hidden; }
-.split-ar { width: 42%; min-width: 340px; max-width: 560px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg1); overflow: hidden; }
+.split-view { display: flex; height: calc(100vh - var(--topbar-h)); overflow: auto; }
+.split-ar { width: 42%; min-width: 340px; max-width: 560px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg1); overflow: auto; }
 .split-ar-toolbar { padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: var(--bg1); flex-shrink: 0; position: sticky; top: 0; z-index: 5; }
-.split-ar-body { flex: 1; overflow-y: auto; padding: 14px; }
-.split-form { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.split-form-scroll { flex: 1; overflow-y: auto; padding: 14px 16px; }
+.split-ar-body { flex: 1; overflow-y: auto; overflow-x: auto; padding: 14px; }
+.split-form { flex: 1; display: flex; flex-direction: column; overflow: auto; min-width: 0; }
+.split-form-scroll { flex: 1; overflow-y: auto; overflow-x: auto; padding: 14px 16px; }
 .split-form-bar { padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg1); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* Annual Report */
@@ -1031,7 +1031,7 @@ function typeBadge(type) {
   const m = {
     fresh:         `<span class="badge bt-fresh">Fresh</span>`,
     ar_update:     `<span class="badge bt-ar">AR Update</span>`,
-    invalidated_gc:`<span class="badge bt-inv">Re-opened</span>`,
+    invalidated_gc:`<span class="badge bt-inv">Invalidated</span>`,
   };
   return m[type] || `<span class="badge bc-unassigned">${type}</span>`;
 }
@@ -1386,9 +1386,7 @@ function renderGolden() {
             <td style="font-size:12.5px">${esc(g.pushedBy)}</td>
             <td class="mono" style="font-size:11.5px;color:var(--txt2)">${esc(g.pushedDate)}</td>
             <td>
-              ${g.invalidated
-                ? `<span class="badge bt-inv">Re-opened</span><span class="mono" style="font-size:10px;color:var(--txt3);margin-left:4px">${g.invYears?.join(', ')||'all'}</span>`
-                : `<span class="badge bw-gc">Active GC</span>`}
+              <span class="badge bw-gc">Active GC</span>${g.invalidated ? `<span style="display:inline-block;margin-left:6px;font-size:10px;color:var(--amber);font-family:var(--mono)" title="Correction in progress in Workbench">(correction in progress)</span>` : ''}
             </td>
             ${canInv?`<td onclick="event.stopPropagation()"><button class="btn btn-danger btn-xs" onclick="openInvalidateModal('${g.id}')">Invalidate</button></td>`:''}
           </tr>`).join('')}
@@ -1463,12 +1461,20 @@ window.doInvalidate = function(gcId) {
   if (!yrs.length) { toast('Select at least one year.', 'err'); return; }
   g.invalidated = true; g.invYears = yrs;
   // Add to workbench
-  if (!WORKBENCH.find(w=>w.coId===g.coId && w.type==='invalidated_gc')) {
-    const existWb = WORKBENCH.find(w=>w.coId===g.coId);
-    const analyst = existWb?.assignedTo || getRRAnalyst();
+  // Find the analyst who previously worked on this company (from existing WB entry or GC push history)
+  const prevWb = WORKBENCH.find(w => w.coId === g.coId);
+  const prevAnalyst = prevWb?.assignedTo || getRRAnalyst();
+
+  const existingInvWb = WORKBENCH.find(w => w.coId === g.coId && w.type === 'invalidated_gc');
+  if (existingInvWb) {
+    // Already an invalidated WB entry — update it with the new/merged years
+    existingInvWb.pendingYears = [...new Set([...(existingInvWb.pendingYears||[]), ...yrs])].sort((a,b)=>a-b);
+    existingInvWb.invalidatedYears = [...new Set([...(existingInvWb.invalidatedYears||[]), ...yrs])].sort((a,b)=>a-b);
+    existingInvWb.wfStatus = 'pending_analyst';
+  } else {
     WORKBENCH.push({
       id:'W'+uid(), coId:g.coId, coName:g.coName, isin:g.isin,
-      l0:g.l0, l0Name:g.l0Name, assignedTo:analyst,
+      l0:g.l0, l0Name:g.l0Name, assignedTo:prevAnalyst,
       type:'invalidated_gc', wfStatus:'pending_analyst', completionStatus:'wip',
       yearsGC:g.yearsGC.filter(y=>!yrs.includes(y)), pendingYears:yrs, invalidatedYears:yrs,
       priority:'high', llm:false, rejCount:0, rejComment:'', committeeNote:'',
@@ -1527,10 +1533,14 @@ function renderGCCompany(gcId) {
   function buildForm() {
     const d = (CLSDATA[g.coId] || {})[activeYear] || { l0: g.l0, segments: [] };
     const yearTabs = `<div class="yr-tabs">
-      ${g.yearsGC.map(y => `
-      <div class="yr-tab ${y === activeYear ? 'active' : ''} gc ${g.invYears?.includes(y) ? 'rejected' : ''}" onclick="gcCoYr(${y})">
-        ${y}${g.invYears?.includes(y) ? ' ⚠' : ' ✓'}
-      </div>`).join('')}
+      ${g.yearsGC.map(y => {
+        const isInv = g.invYears?.includes(y);
+        const cls   = 'yr-tab ' + (y === activeYear ? 'active ' : '') + (isInv ? 'pending' : 'gc');
+        const style = isInv && y !== activeYear ? 'color:var(--amber);' : '';
+        const lbl   = isInv ? y + ' ✎' : y + ' ✓';
+        const tip   = isInv ? 'Invalidated — editable copy in Workbench' : 'GC intact';
+        return `<div class="${cls}" style="${style}" onclick="gcCoYr(${y})" title="${tip}">${lbl}</div>`;
+      }).join('')}
     </div>`;
 
     const sectionTabs = `<div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">
@@ -1642,7 +1652,7 @@ function renderGCCompany(gcId) {
         <div class="split-form-bar">
           <button class="btn btn-ghost btn-sm" onclick="nav('golden')">← Back to Golden Data</button>
           <div style="flex:1"></div>
-          <span style="font-size:11.5px;color:var(--txt3)">Read-only · All roles</span>
+          ${g.invalidated ? `<span style="font-size:11.5px;color:var(--amber)">Correction in progress · GC data intact</span>` : `<span style="font-size:11.5px;color:var(--txt3)">Read-only · All roles</span>`}
           ${currentRole === 'rm' ? `<button class="btn btn-danger btn-sm" onclick="openInvalidateModal('${gcId}')">Invalidate from GC</button>` : ''}
         </div>
       </div>
@@ -1876,7 +1886,7 @@ function renderWorkbench() {
           <option value="all"          ${fType==='all'          ?'selected':''}>All Types</option>
           <option value="fresh"        ${fType==='fresh'        ?'selected':''}>Fresh</option>
           <option value="ar_update"    ${fType==='ar_update'    ?'selected':''}>AR Update</option>
-          <option value="invalidated_gc"${fType==='invalidated_gc'?'selected':''}>Re-opened</option>
+          <option value="invalidated_gc"${fType==='invalidated_gc'?'selected':''}>Invalidated</option>
         </select>
         <span style="margin-left:auto;font-size:11.5px;color:var(--txt3)">${rows.length} result${rows.length!==1?'s':''}</span>
       </div>
@@ -1885,6 +1895,7 @@ function renderWorkbench() {
           <th>Company</th>
           <th>L0 Sector</th>
           <th>Case Type</th>
+          <th>Source</th>
           <th>Workflow Status</th>
           <th>Rejection</th>
           <th>Assigned To</th>
@@ -1911,6 +1922,9 @@ function renderWorkbench() {
               </td>
               <td><span class="chip" style="font-size:11px">${esc(w.l0Name||'—')}</span></td>
               <td>${typeBadge(w.type)}</td>
+              <td>${w.llm
+                ? `<span class="llm-chip">LLM</span>`
+                : `<span style="font-size:10.5px;color:var(--txt3);font-family:var(--mono)">Manual</span>`}</td>
               <td><span class="badge ${{'pending_analyst':'bw-analyst','pending_qc':'bw-qc','pending_committee':'bw-committee','complete_gc':'bw-gc'}[w.wfStatus]||'bc-unassigned'}">${{'pending_analyst':'Pending Analyst','pending_qc':'Pending QC','pending_committee':'Pending Committee','complete_gc':'Complete (GC)'}[w.wfStatus]||w.wfStatus}</span></td>
               <td>${rejCell}</td>
               <td style="font-size:12.5px;color:var(--txt2)">${esc(w.assignedTo)}</td>
@@ -1978,8 +1992,25 @@ function renderCompanyReport(wbId) {
   let activeYear = w.pendingYears[0] || w.yearsGC[w.yearsGC.length-1] || 2023;
   let arPage = 1;
   const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
-  // Only analyst with their own pending_analyst item may edit
-  const isEditable = currentRole === 'analyst' && w.wfStatus === 'pending_analyst' && w.assignedTo === currentUser.name
+  // Core edit permission: analyst must be assigned and status pending_analyst
+  const canEdit = currentRole === 'analyst' && w.wfStatus === 'pending_analyst' && w.assignedTo === currentUser.name
+    || currentRole === 'rm';
+
+  // For invalidated_gc items: only invalidatedYears are mutable; rest are GC-locked read-only
+  // For all other types (fresh, ar_update): all pendingYears are editable
+  const isInvalidated = w.type === 'invalidated_gc';
+  const invYrs = w.invalidatedYears || [];
+  const isEntireCompanyInvalidated = isInvalidated && (invYrs.length === 0 || invYrs.length >= (w.yearsGC.length + invYrs.length));
+
+  function isYearEditable(yr) {
+    if (!canEdit) return false;
+    if (!isInvalidated) return (w.pendingYears||[]).includes(yr);  // normal flow
+    if (isEntireCompanyInvalidated) return true;                    // all years open
+    return invYrs.includes(yr);                                     // only invalidated years
+  }
+
+  // isEditable: overall edit mode (controls UI chrome like Save Draft, Submit buttons)
+  const isEditable = canEdit
 
   function getSegData() {
     const d = (CLSDATA[w.coId]||{})[activeYear];
@@ -2046,21 +2077,42 @@ function renderCompanyReport(wbId) {
     const d = getSegData();
 
     // Rejection / Committee notices
+    const llmBanner = w.llm
+      ? `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--teal-bg);border:1px solid var(--teal-bd);border-radius:var(--radius);margin-bottom:10px;font-size:12px">
+           <span class="llm-chip">LLM</span>
+           <span style="color:var(--teal)">LLM-Powered Classification — segment data and page references were extracted by AI. Verify against the Annual Report.</span>
+         </div>`
+      : `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);margin-bottom:10px;font-size:12px">
+           <span style="font-size:10px;color:var(--txt2);font-family:var(--mono);padding:1px 5px;border:1px solid var(--border2);border-radius:3px;background:var(--bg3)">Manual</span>
+           <span style="color:var(--txt2)">Manual Classification — data entered by analyst.</span>
+         </div>`;
     const notices = [
-      (w.wfStatus==='rejected'||w.rejComment) ? `<div class="rej-box" style="margin-bottom:10px"><div class="rej-hdr">⚠ QC Rejection (${w.rejCount}×)</div><div style="font-size:12.5px">${esc(w.rejComment||'—')}</div></div>` : '',
-      w.committeeNote ? `<div class="comm-box" style="margin-bottom:10px"><div class="comm-hdr">🏛 Committee Resolution</div><div style="font-size:12.5px">${esc(w.committeeNote)}</div></div>` : '',
+      llmBanner,
+      (w.rejCount>0&&w.rejComment) ? `<div class="rej-box" style="margin-bottom:10px"><div class="rej-hdr">QC Rejection (${w.rejCount}×)</div><div style="font-size:12.5px">${esc(w.rejComment||'—')}</div></div>` : '',
+      w.committeeNote ? `<div class="comm-box" style="margin-bottom:10px"><div class="comm-hdr">Committee Resolution</div><div style="font-size:12.5px">${esc(w.committeeNote)}</div></div>` : '',
     ].join('');
 
     // Year tabs — includes + [next year] button for editable analyst view
     const _maxYr = allYrs.length ? Math.max(...allYrs) : 2024;
     const _nextYr = _maxYr + 1;
-    const yearTabs = `<div class="yr-tabs">
-      ${allYrs.map(y=>`
-      <div class="yr-tab ${y===activeYear?'active':''} ${(w.yearsGC||[]).includes(y)?'gc':(w.pendingYears||[]).includes(y)?'pending':''}" onclick="switchYear(${y})">
-        ${y}${(w.yearsGC||[]).includes(y)?'✓':''}
-      </div>`).join('')}
-      ${isEditable && _nextYr<=2026 ? `<div class="yr-tab" onclick="addNewYear(${_nextYr})" title="Add FY${_nextYr}" style="border:1px dashed var(--border2);color:var(--blue)">+ ${_nextYr}</div>` : ''}
-    </div>`;
+    const yearTabs = '<div class="yr-tabs">'
+      + allYrs.map(y => {
+          const isInvYr    = isInvalidated && invYrs.includes(y);
+          const isGCLocked = isInvalidated && !invYrs.includes(y) && (w.yearsGC||[]).includes(y);
+          const isPending  = !isInvalidated && (w.pendingYears||[]).includes(y);
+          const isGCDone   = !isInvalidated && (w.yearsGC||[]).includes(y);
+          let cls = 'yr-tab' + (y === activeYear ? ' active' : '');
+          let sty = '';
+          let lbl = String(y);
+          if (isInvYr)    { cls += ' pending'; sty = y===activeYear ? '' : 'color:var(--amber);'; lbl = y + ' \u270e'; }
+          else if (isGCLocked) { cls += ' gc'; lbl = y + ' \ud83d\udd12'; }
+          else if (isGCDone)   { cls += ' gc'; lbl = y + ' \u2713'; }
+          else if (isPending)  { cls += ' pending'; }
+          const tip = isGCLocked ? 'GC-locked \u2014 year not invalidated' : isInvYr ? 'Invalidated \u2014 editable' : '';
+          return '<div class="' + cls + '" style="' + sty + '" onclick="switchYear(' + y + ')" title="' + tip + '">' + lbl + '</div>';
+        }).join('')
+      + (isEditable && !isInvalidated && _nextYr<=2026 ? '<div class="yr-tab" onclick="addNewYear('+_nextYr+')" title="Add FY'+_nextYr+'" style="border:1px dashed var(--border2);color:var(--blue)">+ '+_nextYr+'</div>' : '')
+      + '</div>';
 
     // Section tabs
     const sectionTabs = `<div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">
@@ -2078,14 +2130,14 @@ function renderCompanyReport(wbId) {
     // METADATA TAB
     const metadataContent = `
     <div class="fg-row fg-2">
-      <div class="fg"><label class="fl">Legal Name</label><input class="fi" value="${esc(co.name||w.coName)}" ${isEditable?'':'readonly'}></div>
+      <div class="fg"><label class="fl">Legal Name</label><input class="fi" value="${esc(co.name||w.coName)}" ${isYearEditable(activeYear)?'':'readonly'}></div>
       <div class="fg"><label class="fl">ISIN</label><input class="fi" value="${esc(w.isin)}" readonly></div>
-      <div class="fg"><label class="fl">Country</label><input class="fi" value="${esc(co.country||'—')}" ${isEditable?'':'readonly'}></div>
-      <div class="fg"><label class="fl">Currency</label><input class="fi" value="${esc(co.currency||'—')}" ${isEditable?'':'readonly'}></div>
-      <div class="fg"><label class="fl">FY End Date</label><input class="fi" value="${activeYear}-12-31" type="date" ${isEditable?'':'readonly'}></div>
-      <div class="fg"><label class="fl">AR Published Date</label><input class="fi" value="${activeYear}-04-30" type="date" ${isEditable?'':'readonly'}></div>
-      <div class="fg"><label class="fl">Total Revenue (${co.currency||'USD'} Mn)</label><input class="fi" id="fi-totalrev" value="${fmtNum(d.segments.reduce((a,s)=>a+(s.rev||0),0).toFixed(1))}" ${isEditable?'':'readonly'}></div>
-      <div class="fg"><label class="fl">Exchange / MIC</label><input class="fi" value="${esc(co.exchange||'—')}" ${isEditable?'':'readonly'}></div>
+      <div class="fg"><label class="fl">Country</label><input class="fi" value="${esc(co.country||'—')}" ${isYearEditable(activeYear)?'':'readonly'}></div>
+      <div class="fg"><label class="fl">Currency</label><input class="fi" value="${esc(co.currency||'—')}" ${isYearEditable(activeYear)?'':'readonly'}></div>
+      <div class="fg"><label class="fl">FY End Date</label><input class="fi" value="${activeYear}-12-31" type="date" ${isYearEditable(activeYear)?'':'readonly'}></div>
+      <div class="fg"><label class="fl">AR Published Date</label><input class="fi" value="${activeYear}-04-30" type="date" ${isYearEditable(activeYear)?'':'readonly'}></div>
+      <div class="fg"><label class="fl">Total Revenue (${co.currency||'USD'} Mn)</label><input class="fi" id="fi-totalrev" value="${fmtNum(d.segments.reduce((a,s)=>a+(s.rev||0),0).toFixed(1))}" ${isYearEditable(activeYear)?'':'readonly'}></div>
+      <div class="fg"><label class="fl">Exchange / MIC</label><input class="fi" value="${esc(co.exchange||'—')}" ${isYearEditable(activeYear)?'':'readonly'}></div>
     </div>
     ${w.llm&&d.segments.some(s=>s.pg)?`
     <div class="info-box ib-info" style="margin-top:4px;font-size:11.5px">
@@ -2101,13 +2153,13 @@ function renderCompanyReport(wbId) {
           <th>Rev (${co.currency||'USD'}Mn)</th><th>Rev %</th>
           <th>Page${w.llm?' <span class="llm-chip" style="font-size:9px">LLM</span>':''}</th>
           <th>Class</th><th>Comment</th>
-          ${isEditable?'<th></th>':''}
+          ${isYearEditable(activeYear)?'<th></th>':''}
         </tr></thead>
         <tbody id="rev-tbody">
           ${d.segments.length>0 ? d.segments.map((s,i)=>`
           <tr id="revrow-${i}">
             <td style="font-weight:600;font-size:12px;min-width:130px">
-              ${isEditable?`<input class="fi-inline" value="${esc(s.label)}">`:`<span>${esc(s.label)}</span>`}
+              ${isYearEditable(activeYear)?`<input class="fi-inline" value="${esc(s.label)}">`:`<span>${esc(s.label)}</span>`}
             </td>
             <td><span class="chip" style="font-size:11px">${esc(getL0Name(w.l0))}</span></td>
             <td style="font-size:12px;color:var(--txt2)">${esc(s.l1n)}</td>
@@ -2124,10 +2176,10 @@ function renderCompanyReport(wbId) {
             </td>
             <td>${s.pg?`<span class="page-ref" onclick="gotoPage(${s.pg})">p.${s.pg}</span>`:`<span style="color:var(--txt3);font-size:11px">—</span>`}</td>
             <td>${revBadge(s.cls)}</td>
-            <td style="min-width:90px">${isEditable?`<input class="fi-inline" placeholder="Comment…">`:`<span style="font-size:11.5px;color:var(--txt3)">—</span>`}</td>
-            ${isEditable?`<td><button class="btn btn-danger btn-xs" onclick="document.getElementById('revrow-${i}').remove()">✕</button></td>`:''}
+            <td style="min-width:90px">${isYearEditable(activeYear)?`<input class="fi-inline" placeholder="Comment…">`:`<span style="font-size:11.5px;color:var(--txt3)">—</span>`}</td>
+            ${isYearEditable(activeYear)?`<td><button class="btn btn-danger btn-xs" onclick="document.getElementById('revrow-${i}').remove()">✕</button></td>`:''}
           </tr>`).join('')
-          : `<tr><td colspan="${isEditable?10:9}" style="text-align:center;padding:18px;color:var(--txt3);font-size:12.5px">No segments for FY${activeYear}${isEditable?' — use <strong>+ Add Segment</strong> below':''}</td></tr>`}
+          : `<tr><td colspan="${isYearEditable(activeYear)?10:9}" style="text-align:center;padding:18px;color:var(--txt3);font-size:12.5px">No segments for FY${activeYear}${isYearEditable(activeYear)?' — use <strong>+ Add Segment</strong> below':''}</td></tr>`}
         </tbody>
       </table>
     </div>`;
@@ -2166,7 +2218,13 @@ function renderCompanyReport(wbId) {
         <button class="btn btn-ghost btn-sm" onclick="nav('workbench')" style="flex-shrink:0">← Workbench</button>
         <div style="flex:1;min-width:0;overflow:hidden">
           <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(w.coName)}</div>
-          <div class="mono" style="font-size:10.5px;color:var(--txt3)">${typeBadge(w.type)} FY${activeYear}</div>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
+            ${typeBadge(w.type)}
+            ${w.llm
+              ? `<span class="llm-chip">LLM</span>`
+              : `<span style="font-size:10px;color:var(--txt3);font-family:var(--mono);padding:1px 5px;border:1px solid var(--border2);border-radius:3px">Manual</span>`}
+            <span class="mono" style="font-size:10.5px;color:var(--txt3)">FY${activeYear}</span>
+          </div>
         </div>
         <button class="btn btn-ghost btn-xs" onclick="toast('Full AR viewer coming soon','info')" title="Expand">⤢</button>
         <button class="btn btn-ghost btn-xs" onclick="toast('AR download coming soon','info')" title="Download">↓</button>
@@ -2288,6 +2346,9 @@ window.submitQC = function(wbId, action) {
     AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
       action:'QC Accepted → Pushed to GC',co:w.coName,year:allYrs.join(', '),
       ts:new Date().toLocaleString('en-GB'),detail:comment});
+    // Remove the WB entry — the editable copy disappears now that GC is updated
+    const wbIdx = WORKBENCH.findIndex(x => x.id === wbId);
+    if (wbIdx !== -1) WORKBENCH.splice(wbIdx, 1);
     closeModal(); toast(`${w.coName} accepted and pushed to Golden Copy ✓`, 'ok');
   } else {
     w.rejCount = (w.rejCount||0)+1;
@@ -2336,12 +2397,19 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
     const rejNote = w.rejCount > 0
       ? `<span style="font-size:11px;color:var(--red);font-weight:600;padding:3px 8px;border-radius:4px;background:var(--red-bg);border:1px solid var(--red-bd)">${w.rejCount > 1 ? w.rejCount + 'x ' : ''}Rejected — address QC feedback</span>`
       : '';
+    const invNote = w.type === 'invalidated_gc'
+      ? (() => {
+          const invYrs2 = w.invalidatedYears || [];
+          const allOpen = invYrs2.length === 0;
+          return `<span style="font-size:11px;color:var(--amber);padding:3px 8px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-bd)">Invalidated — ${allOpen ? 'all years editable' : invYrs2.join(', ') + ' editable · other years GC-locked'}</span>`;
+        })()
+      : '';
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">Cancel</button>
       <button class="btn btn-ghost btn-sm" onclick="saveDraft('${w.id}')">Save Draft</button>
       ${activeFormTab === 'revenue' ? `<button class="btn btn-teal btn-sm" onclick="addRevRow()">+ Segment</button>` : ''}
       <div style="flex:1"></div>
-      ${rejNote}
+      ${invNote}${rejNote}
       <button class="btn btn-primary btn-sm" onclick="submitForQC('${w.id}')">Submit for QC →</button>`;
   }
 
