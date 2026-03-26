@@ -617,6 +617,7 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
       <div class="nav-item" data-page="levels" onclick="nav('levels')">Levels (L0/L1/L2)</div>
       <div class="sb-group">Workflow</div>
       <div class="nav-item" data-page="workbench" onclick="nav('workbench')">Workbench <span class="nav-badge" id="nb-wb">0</span></div>
+      <div class="nav-item" data-page="assignments" onclick="nav('assignments')">Assignment Management</div>
       <div class="sb-group">Corp. Actions</div>
       <div class="nav-item" data-page="ca" onclick="nav('ca')">CA Handling <span class="nav-badge a" id="nb-ca">0</span></div>
       <div class="nav-item" data-page="ca-gc" onclick="nav('ca-gc')">CA Golden Copy</div>
@@ -1476,6 +1477,7 @@ const PAGE_NAMES = {
   'ca-gc': 'CA Golden Copy',
   reports: 'Download Reports',
   audit: 'Audit Trail',
+  assignments: 'Assignment Management',
 };
 function nav(page, params={}) {
   currentPage = page;
@@ -1484,6 +1486,7 @@ function nav(page, params={}) {
   document.querySelectorAll('.nav-item').forEach(el => {
     const match = el.dataset.page === page
       || (page==='company-report' && el.dataset.page==='workbench')
+      || (page==='assignments'    && el.dataset.page==='assignments')
       || (page==='gc-company' && el.dataset.page==='golden');
     el.classList.toggle('active', match);
   });
@@ -1509,6 +1512,7 @@ function nav(page, params={}) {
     case 'ca-gc':          renderCAGolden(); break;
     case 'reports':        renderReports(); break;
     case 'audit':          renderAudit(); break;
+    case 'assignments':    renderAssignments(); break;
     default: document.getElementById('view').innerHTML = '<div class="empty-state"><div class="empty-ico">🚧</div><div class="empty-title">Coming Soon</div></div>';
   }
 }
@@ -2653,7 +2657,10 @@ function renderWorkbench() {
             <td>${rejCell}</td>
             <td style="font-size:12px;color:var(--txt2)">${esc(w.assignedTo||'—')}</td>
             <td style="font-size:12px;color:var(--txt2)">${esc(w.qcAssignedTo||'—')}</td>
-            <td>${actionBtn}</td>
+            <td style="display:flex;gap:4px;align-items:center">
+              ${actionBtn}
+              ${canRM?'<button class="btn btn-ghost btn-xs" style="padding:2px 7px" onclick="event.stopPropagation();openReassignModal(\''+w.id+'\')" title="Reassign">&#x21C4;</button>':''}
+            </td>
           </tr>`;
         }).join('');
     applySort('wb-head', sCol, sDir);
@@ -3887,6 +3894,396 @@ window.exportAudit = function() {
 };
 
 // ═══════════════════════════════════════════════════════════
+// ─── Assignment Management Page ───────────────────────────────────────────
+function renderAssignments() {
+  if (currentRole !== 'rm' && currentRole !== 'admin') {
+    document.getElementById('view').innerHTML = '<div class="empty-state"><div class="empty-ico">🔒</div><div class="empty-title">Access Restricted</div><div class="empty-sub">Assignment Management is only available to RM and Admin roles.</div></div>';
+    return;
+  }
+
+  // ── Filter state ──
+  var fAna    = window._asgFAna    || '';
+  var fQC     = window._asgFQC     || '';
+  var fSect   = window._asgFSect   || '';
+  var fStat   = window._asgFStat   || '';
+  var fType   = window._asgFType   || '';
+  var sCol    = window._asgSCol    || '';
+  var sDir    = window._asgSDir    || 'asc';
+
+  // ── Workbench pool (exclude COMPLETED) ──
+  var pool = WORKBENCH.filter(function(w){ return w.wfStatus !== 'COMPLETED'; });
+
+  // ── Workload summary per person ──
+  var anaLoad = {};
+  var qcLoad  = {};
+  ROLE_USERS.analyst.forEach(function(u){ anaLoad[u.name] = 0; });
+  ROLE_USERS.qc.forEach(function(u){     qcLoad[u.name]  = 0; });
+  pool.forEach(function(w){
+    if (anaLoad[w.assignedTo]   !== undefined) anaLoad[w.assignedTo]++;
+    if (qcLoad[w.qcAssignedTo]  !== undefined) qcLoad[w.qcAssignedTo]++;
+  });
+
+  // ── Sector list ──
+  var sects = []; var seenS = {};
+  pool.forEach(function(w){ if(w.l0Name&&!seenS[w.l0Name]){ seenS[w.l0Name]=1; sects.push(w.l0Name); } });
+  sects.sort();
+
+  // ── Analyst / QC option lists ──
+  function anaOpts(sel) {
+    return '<option value="">All Analysts</option>'+ROLE_USERS.analyst.map(function(u){
+      return '<option value="'+u.name+'"'+(sel===u.name?' selected':'')+'>'+u.name+' ('+( anaLoad[u.name]||0)+')</option>';
+    }).join('');
+  }
+  function qcOpts(sel) {
+    return '<option value="">All QC</option>'+ROLE_USERS.qc.map(function(u){
+      return '<option value="'+u.name+'"'+(sel===u.name?' selected':'')+'>'+u.name+' ('+( qcLoad[u.name]||0)+')</option>';
+    }).join('');
+  }
+  function sectOpts() {
+    var o = '<option value="">All Sectors</option>';
+    sects.forEach(function(s){ o += '<option value="'+s+'"'+(fSect===s?' selected':'')+'>'+s+'</option>'; });
+    return o;
+  }
+
+  // ── Apply filters ──
+  var rows = pool.filter(function(w){
+    if (fAna  && w.assignedTo   !== fAna)  return false;
+    if (fQC   && w.qcAssignedTo !== fQC)   return false;
+    if (fSect && w.l0Name       !== fSect) return false;
+    if (fStat && w.wfStatus     !== fStat) return false;
+    if (fType && w.type         !== fType) return false;
+    return true;
+  });
+
+  // ── Sort ──
+  if (sCol) {
+    rows = rows.slice().sort(function(a,b){
+      var av = a[sCol]||'', bv = b[sCol]||'';
+      return sDir==='asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+  }
+
+  // ── Workload bar helper ──
+  function loadBar(n, max, color) {
+    var w = max ? Math.round(n/max*100) : 0;
+    return '<div style="display:flex;align-items:center;gap:6px">'
+      +'<div style="width:60px;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">'
+      +'<div style="width:'+w+'%;height:100%;background:'+color+';border-radius:3px"></div></div>'
+      +'<span class="mono" style="font-size:11px;color:var(--txt3)">'+n+'</span></div>';
+  }
+  var maxAna = Math.max.apply(null, Object.values(anaLoad).concat([1]));
+  var maxQC  = Math.max.apply(null, Object.values(qcLoad).concat([1]));
+
+  // ── Workload summary cards ──
+  var anaCards = ROLE_USERS.analyst.map(function(u){
+    var n = anaLoad[u.name]||0;
+    var col = n > maxAna*0.7 ? 'var(--amber)' : 'var(--blue)';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer" onclick="window._asgFAna=\''+u.name+'\';renderAssignments()">'
+      +'<div style="width:30px;height:30px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">'+u.initials+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name)+'</div>'
+      +loadBar(n, maxAna, col)
+      +'</div></div>';
+  }).join('');
+
+  var qcCards = ROLE_USERS.qc.map(function(u){
+    var n = qcLoad[u.name]||0;
+    var col = n > maxQC*0.7 ? 'var(--amber)' : 'var(--purple)';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer" onclick="window._asgFQC=\''+u.name+'\';renderAssignments()">'
+      +'<div style="width:30px;height:30px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">'+u.initials+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name)+'</div>'
+      +loadBar(n, maxQC, col)
+      +'</div></div>';
+  }).join('');
+
+  // ── Status / type labels ──
+  var wfLabel = {'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC'};
+  var wfCls   = {'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee'};
+
+  // ── Table rows ──
+  var tblRows = rows.map(function(w){
+    var anaSelOpts = ROLE_USERS.analyst.map(function(u){
+      return '<option value="'+u.name+'"'+(w.assignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
+    }).join('');
+    var qcSelOpts = ROLE_USERS.qc.map(function(u){
+      return '<option value="'+u.name+'"'+(w.qcAssignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
+    }).join('');
+    return '<tr>'
+      +'<td style="font-weight:600;font-size:12.5px;min-width:160px">'+esc(w.coName)
+      +'<div class="mono" style="font-size:10px;color:var(--txt3)">'+esc(w.isin)+'</div></td>'
+      +'<td>'+typeBadge(w.type)+'</td>'
+      +'<td><span class="badge '+(wfCls[w.wfStatus]||'bc-unassigned')+'">'+(wfLabel[w.wfStatus]||w.wfStatus)+'</span></td>'
+      +'<td onclick="event.stopPropagation()">'
+      +'<select class="fs" style="padding:4px 24px 4px 8px;font-size:11.5px" onchange="asgInlineSet(\''+w.id+'\',\'analyst\',this.value)">'+anaSelOpts+'</select></td>'
+      +'<td onclick="event.stopPropagation()">'
+      +'<select class="fs" style="padding:4px 24px 4px 8px;font-size:11.5px" onchange="asgInlineSet(\''+w.id+'\',\'qc\',this.value)">'+qcSelOpts+'</select></td>'
+      +'<td class="mono" style="font-size:11px;color:var(--txt3)">'+esc(w.createdDate||'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  // ── Bulk assign target options ──
+  var bulkAnaOpts = '<option value="">-- select analyst --</option>'+ROLE_USERS.analyst.map(function(u){
+    return '<option value="'+u.name+'">'+u.name+' ('+( anaLoad[u.name]||0)+')</option>';
+  }).join('');
+  var bulkQCOpts = '<option value="">-- select QC --</option>'+ROLE_USERS.qc.map(function(u){
+    return '<option value="'+u.name+'">'+u.name+' ('+( qcLoad[u.name]||0)+')</option>';
+  }).join('');
+
+  // ── Leave cover: person dropdowns ──
+  var leaveAnaOpts = '<option value="">-- analyst on leave --</option>'+ROLE_USERS.analyst.map(function(u){
+    return '<option value="'+u.name+':analyst">'+u.name+' (Analyst)</option>';
+  }).join('');
+  var leaveQCOpts = ROLE_USERS.qc.map(function(u){
+    return '<option value="'+u.name+':qc">'+u.name+' (QC)</option>';
+  }).join('');
+  var leaveAllOpts = leaveAnaOpts + leaveQCOpts;
+
+  // ── Render ──
+  document.getElementById('view').innerHTML = ''
+    +'<div style="max-width:1400px">'
+
+    // Page header
+    +'<div class="pg-hd"><div>'
+    +'<div class="pg-title">Assignment Management</div>'
+    +'<div class="pg-sub">Manage analyst and QC assignments across the classification queue</div>'
+    +'</div></div>'
+
+    // ── Workload overview ──
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
+    +'<div class="card"><div class="card-hd"><div>'
+    +'<div class="card-title">Analyst Workload</div>'
+    +'<div class="card-sub">Open tasks assigned · click to filter</div>'
+    +'</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+anaCards+'</div></div>'
+    +'<div class="card"><div class="card-hd"><div>'
+    +'<div class="card-title">QC Workload</div>'
+    +'<div class="card-sub">Open tasks assigned · click to filter</div>'
+    +'</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+qcCards+'</div></div>'
+    +'</div>'
+
+    // ── Bulk assign + leave cover ──
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
+
+    // Bulk assign
+    +'<div class="card">'
+    +'<div class="card-hd"><div>'
+    +'<div class="card-title">Bulk Assignment</div>'
+    +'<div class="card-sub">Assign all filtered tasks to a selected person</div>'
+    +'</div></div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px">'
+    +'<div style="font-size:12px;color:var(--txt2);padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border2)">'
+    +'<strong>'+rows.length+'</strong> tasks match current filters and will be reassigned.'
+    +'</div>'
+    +'<div class="fg"><label class="fl">Reassign Analyst to</label>'
+    +'<select class="fs" id="bulk-analyst">'+bulkAnaOpts+'</select></div>'
+    +'<div class="fg"><label class="fl">Reassign QC to</label>'
+    +'<select class="fs" id="bulk-qc">'+bulkQCOpts+'</select></div>'
+    +'<div class="fg"><label class="fl">Reason <span class="req">*</span></label>'
+    +'<input class="fi" id="bulk-reason" placeholder="e.g. Rebalancing after leave coverage"></div>'
+    +'<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="asgBulkAssign()">Apply Bulk Assignment</button>'
+    +'</div></div>'
+
+    // Leave cover
+    +'<div class="card">'
+    +'<div class="card-hd"><div>'
+    +'<div class="card-title">Leave Cover</div>'
+    +'<div class="card-sub">Instantly redistribute all tasks from one person to the rest of the team</div>'
+    +'</div></div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px">'
+    +'<div style="font-size:12px;color:var(--amber);padding:8px 10px;background:var(--amber-bg);border-radius:var(--radius);border:1px solid var(--amber-bd)">'
+    +'Tasks are redistributed round-robin across the remaining team. This cannot be undone automatically — use Audit Trail to review.'
+    +'</div>'
+    +'<div class="fg"><label class="fl">Person Going on Leave</label>'
+    +'<select class="fs" id="leave-person">'+leaveAllOpts+'</select></div>'
+    +'<div class="fg"><label class="fl">Reason / Note</label>'
+    +'<input class="fi" id="leave-reason" placeholder="e.g. Annual leave 28 Mar – 4 Apr"></div>'
+    +'<button class="btn btn-warn" style="width:100%;justify-content:center" onclick="asgLeaveCover()">Redistribute Tasks</button>'
+    +'</div></div>'
+
+    +'</div>'
+
+    // ── Filter + table ──
+    +'<div class="tbl-wrap">'
+    +'<div class="tbl-bar" style="flex-wrap:wrap;gap:8px">'
+    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFAna=this.value;renderAssignments()">'+anaOpts(fAna)+'</select>'
+    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFQC=this.value;renderAssignments()">'+qcOpts(fQC)+'</select>'
+    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFSect=this.value;renderAssignments()">'+sectOpts()+'</select>'
+    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFStat=this.value;renderAssignments()">'
+    +'<option value="">All Statuses</option>'
+    +'<option value="PENDING_ANALYST"'+(fStat==='PENDING_ANALYST'?' selected':'')+'>Pending Analyst</option>'
+    +'<option value="PENDING_QC"'+(fStat==='PENDING_QC'?' selected':'')+'>Pending QC</option>'
+    +'<option value="PENDING_IC"'+(fStat==='PENDING_IC'?' selected':'')+'>Pending IC</option>'
+    +'</select>'
+    +'<select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window._asgFType=this.value;renderAssignments()">'
+    +'<option value="">All Types</option>'
+    +'<option value="FRESH"'+(fType==='FRESH'?' selected':'')+'>Fresh</option>'
+    +'<option value="AR_UPDATE"'+(fType==='AR_UPDATE'?' selected':'')+'>AR Update</option>'
+    +'<option value="INVALIDATED"'+(fType==='INVALIDATED'?' selected':'')+'>Correction</option>'
+    +'</select>'
+    +'<span style="margin-left:auto;font-size:11.5px;color:var(--txt3)">'+rows.length+' tasks</span>'
+    +'<button class="btn btn-ghost btn-sm" onclick="window._asgFAna=\'\';window._asgFQC=\'\';window._asgFSect=\'\';window._asgFStat=\'\';window._asgFType=\'\';renderAssignments()">Clear</button>'
+    +'</div>'
+    +'<table class="dt">'
+    +'<thead><tr>'
+    +'<th class="sortable" onclick="window._asgSCol=\'coName\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">Company</th>'
+    +'<th>Type</th><th>Status</th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'assignedTo\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">Analyst</th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'qcAssignedTo\';window._asgSDir=(window._asgSDir===\'asc\'?\'desc\':\'asc\');renderAssignments()">QC Reviewer</th>'
+    +'<th>Created</th>'
+    +'</tr></thead>'
+    +'<tbody>'+(tblRows||'<tr><td colspan="6"><div class="empty-state"><div class="empty-title">No tasks match</div></div></td></tr>')+'</tbody>'
+    +'</table></div>'
+
+    +'</div>';
+}
+
+// ── Inline single-cell reassign ──────────────────────────────────────────
+window.asgInlineSet = function(wbId, field, val) {
+  var w = WORKBENCH.find(function(x){ return x.id===wbId; }); if (!w) return;
+  var oldVal = field==='analyst' ? w.assignedTo : w.qcAssignedTo;
+  if (val === oldVal) return;
+  if (field==='analyst') w.assignedTo   = val;
+  else                   w.qcAssignedTo = val;
+  AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
+    action:'Task Reassigned', co:w.coName, year:'--',
+    ts:new Date().toLocaleString('en-GB'),
+    detail:(field==='analyst'?'Analyst':'QC')+': '+oldVal+' to '+val+'. Via Assignment Management.' });
+  toast(w.coName+': '+(field==='analyst'?'Analyst':'QC')+' updated to '+val+'.','ok');
+};
+
+// ── Bulk assignment ──────────────────────────────────────────────────────
+window.asgBulkAssign = function() {
+  var fAna  = window._asgFAna  || '';
+  var fQC   = window._asgFQC   || '';
+  var fSect = window._asgFSect || '';
+  var fStat = window._asgFStat || '';
+  var fType = window._asgFType || '';
+  var na    = document.getElementById('bulk-analyst').value;
+  var nq    = document.getElementById('bulk-qc').value;
+  var rs    = (document.getElementById('bulk-reason').value||'').trim();
+  if (!na && !nq) { toast('Select at least one target (Analyst or QC).','err'); return; }
+  if (!rs)        { toast('Reason is required.','err'); return; }
+  var targets = WORKBENCH.filter(function(w){
+    if (w.wfStatus === 'COMPLETED') return false;
+    if (fAna  && w.assignedTo   !== fAna)  return false;
+    if (fQC   && w.qcAssignedTo !== fQC)   return false;
+    if (fSect && w.l0Name       !== fSect) return false;
+    if (fStat && w.wfStatus     !== fStat) return false;
+    if (fType && w.type         !== fType) return false;
+    return true;
+  });
+  if (!targets.length) { toast('No tasks match the current filters.','warn'); return; }
+  var count = 0;
+  targets.forEach(function(w){
+    var ch = [];
+    if (na && na !== w.assignedTo)   { ch.push('Analyst: '+w.assignedTo+' to '+na);   w.assignedTo   = na; }
+    if (nq && nq !== w.qcAssignedTo) { ch.push('QC: '+w.qcAssignedTo+' to '+nq);     w.qcAssignedTo = nq; }
+    if (ch.length) {
+      count++;
+      AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
+        action:'Bulk Reassigned', co:w.coName, year:'--',
+        ts:new Date().toLocaleString('en-GB'),
+        detail:ch.join(' | ')+'. Reason: '+rs });
+    }
+  });
+  toast('Bulk assigned: '+count+' task'+(count!==1?'s':'')+' updated.','ok');
+  renderAssignments();
+};
+
+// ── Leave cover: round-robin redistribute ────────────────────────────────
+window.asgLeaveCover = function() {
+  var lp  = document.getElementById('leave-person').value;
+  var rs  = (document.getElementById('leave-reason').value||'').trim();
+  if (!lp) { toast('Select the person going on leave.','err'); return; }
+  if (!rs) { toast('Reason / note is required.','err'); return; }
+  var parts = lp.split(':');
+  var name  = parts[0];
+  var role2 = parts[1]; // 'analyst' or 'qc'
+  var pool  = role2==='analyst'
+    ? ROLE_USERS.analyst.map(function(u){ return u.name; }).filter(function(n){ return n!==name; })
+    : ROLE_USERS.qc.map(function(u){ return u.name; }).filter(function(n){ return n!==name; });
+  if (!pool.length) { toast('No remaining team members to redistribute to.','err'); return; }
+  var targets = WORKBENCH.filter(function(w){
+    if (w.wfStatus==='COMPLETED') return false;
+    return role2==='analyst' ? w.assignedTo===name : w.qcAssignedTo===name;
+  });
+  if (!targets.length) { toast(name+' has no open tasks to redistribute.','warn'); return; }
+  var idx = 0;
+  targets.forEach(function(w){
+    var newPerson = pool[idx % pool.length];
+    idx++;
+    if (role2==='analyst') {
+      AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
+        action:'Leave Cover Reassignment', co:w.coName, year:'--',
+        ts:new Date().toLocaleString('en-GB'),
+        detail:'Analyst: '+name+' to '+newPerson+'. Reason: '+rs });
+      w.assignedTo = newPerson;
+    } else {
+      AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
+        action:'Leave Cover Reassignment', co:w.coName, year:'--',
+        ts:new Date().toLocaleString('en-GB'),
+        detail:'QC: '+name+' to '+newPerson+'. Reason: '+rs });
+      w.qcAssignedTo = newPerson;
+    }
+  });
+  toast('Redistributed '+targets.length+' task'+(targets.length!==1?'s':'')+' from '+name+' across '+pool.length+' team member'+(pool.length!==1?'s':'')+'.','ok');
+  renderAssignments();
+};
+
+// -- Reassignment (RM only) --
+window.openReassignModal = function(wbId) {
+  var w = WORKBENCH.find(function(x){ return x.id===wbId; }); if (!w) return;
+  var ao = ROLE_USERS.analyst.map(function(u){
+    return '<option value="'+u.name+'"'+(w.assignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
+  }).join('');
+  var qo = ROLE_USERS.qc.map(function(u){
+    return '<option value="'+u.name+'"'+(w.qcAssignedTo===u.name?' selected':'')+'>'+u.name+'</option>';
+  }).join('');
+  var html = '<div class="m-hd"><div><div class="m-title">Reassign Task</div>'
+    +'<div class="m-sub">'+esc(w.coName)+' &mdash; '+esc(w.isin)+'</div></div>'
+    +'<button class="m-close" onclick="closeModal()">&#x2715;</button></div>'
+    +'<div class="m-body">'
+    +'<div style="background:var(--amber-bg);border:1px solid var(--amber-bd);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--amber)">'
+    +'Reassigning overrides the auto-assignment. Task status and progress are preserved.'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    +'<div class="fg"><label class="fl">Analyst</label>'
+    +'<div style="font-size:11px;color:var(--txt3);margin-bottom:4px">Currently: <strong>'+esc(w.assignedTo||'Unassigned')+'</strong></div>'
+    +'<select class="fs" id="ra-analyst">'+ao+'</select></div>'
+    +'<div class="fg"><label class="fl">QC Reviewer</label>'
+    +'<div style="font-size:11px;color:var(--txt3);margin-bottom:4px">Currently: <strong>'+esc(w.qcAssignedTo||'Unassigned')+'</strong></div>'
+    +'<select class="fs" id="ra-qc">'+qo+'</select></div>'
+    +'</div>'
+    +'<div class="fg" style="margin-top:12px"><label class="fl">Reason <span class="req">*</span></label>'
+    +'<input class="fi" id="ra-reason" placeholder="e.g. Analyst on leave, workload rebalancing..."></div>'
+    +'</div>'
+    +'<div class="m-foot">'
+    +'<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>'
+    +'<button class="btn btn-primary" onclick="doReassign('+JSON.stringify(wbId)+')">Confirm Reassignment</button>'
+    +'</div>';
+  showModal(html, 'm-md');
+};
+window.doReassign = function(wbId) {
+  var w = WORKBENCH.find(function(x){ return x.id===wbId; }); if (!w) return;
+  var na = document.getElementById('ra-analyst').value;
+  var nq = document.getElementById('ra-qc').value;
+  var rs = (document.getElementById('ra-reason').value||'').trim();
+  if (!rs) { toast('Reason is required.','err'); return; }
+  var ch = [];
+  if (na !== w.assignedTo)   { ch.push('Analyst: '+w.assignedTo+' to '+na);   w.assignedTo   = na; }
+  if (nq !== w.qcAssignedTo) { ch.push('QC: '+w.qcAssignedTo+' to '+nq);     w.qcAssignedTo = nq; }
+  if (!ch.length) { toast('No changes - same assignments selected.','warn'); return; }
+  AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
+    action:'Task Reassigned', co:w.coName, year:'--',
+    ts:new Date().toLocaleString('en-GB'),
+    detail:ch.join(' | ')+'. Reason: '+rs });
+  closeModal();
+  toast('Reassigned: '+ch.join(', ')+'.','ok');
+  nav('workbench');
+};
+
 // INIT
 // ═══════════════════════════════════════════════════════════
 nav('dashboard');
