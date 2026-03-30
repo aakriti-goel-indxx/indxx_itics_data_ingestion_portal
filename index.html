@@ -611,14 +611,14 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
     <div class="sb-nav" id="sb-nav">
       <div class="sb-group">Overview</div>
       <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard')">Dashboard</div>
-      <div class="nav-item" data-page="golden" onclick="nav('golden')">Golden Data <span class="nav-badge g" id="nb-gc">0</span></div>
+      <div class="nav-item" data-page="golden" onclick="nav('golden')">Golden Data</div>
       <div class="sb-group">Master Data</div>
       <div class="nav-item" data-page="companies" onclick="nav('companies')">Companies</div>
-      <div class="nav-item" data-page="levels" onclick="nav('levels')">Levels (Sectors/Themes/Sub-Themes)</div>
+      <div class="nav-item" data-page="levels" onclick="nav('levels')">Taxonomy</div>
       <div class="sb-group">Workflow</div>
-      <div class="nav-item" data-page="workbench" onclick="nav('workbench')">Workbench <span class="nav-badge" id="nb-wb">0</span></div>
+      <div class="nav-item" data-page="workbench" onclick="nav('workbench')">Workbench</div>
       <div class="sb-group">Corp. Actions</div>
-      <div class="nav-item" data-page="ca" onclick="nav('ca')">CA Handling <span class="nav-badge a" id="nb-ca">0</span></div>
+      <div class="nav-item" data-page="ca" onclick="nav('ca')">CA Handling</div>
       <div class="nav-item" data-page="ca-gc" onclick="nav('ca-gc')">CA Golden Copy</div>
       <div class="sb-group">Reports</div>
       <div class="nav-item" data-page="reports" onclick="nav('reports')">Download Reports</div>
@@ -1474,7 +1474,7 @@ const PAGE_NAMES = {
   dashboard: 'Dashboard',
   golden: 'Golden Data',
   companies: 'Companies Master',
-  levels: 'Levels Master',
+  levels: 'Taxonomy',
   workbench: 'ITICS Workbench',
   'company-report': 'Company Report',
   'gc-company': 'Golden Data — Company',
@@ -1518,14 +1518,7 @@ function nav(page, params={}) {
     default: document.getElementById('view').innerHTML = '<div class="empty-state"><div class="empty-ico">🚧</div><div class="empty-title">Coming Soon</div></div>';
   }
 }
-function refreshBadges() {
-  document.getElementById('nb-gc').textContent = GOLDEN.length;
-  const myCount = currentRole==='analyst'
-    ? WORKBENCH.filter(w=>w.assignedTo===currentUser.name).length
-    : WORKBENCH.filter(w=>w.wfStatus!=='COMPLETED').length;
-  document.getElementById('nb-wb').textContent = myCount;
-  document.getElementById('nb-ca').textContent = CORP_ACTIONS.filter(c=>c.status==='Under Review').length;
-}
+function refreshBadges() {}
 
 // ═══════════════════════════════════════════════════════════
 // ROLE MANAGEMENT
@@ -2279,7 +2272,7 @@ function renderLevels() {
   const canEdit = currentRole==='rm';
   document.getElementById('view').innerHTML = `
   <div class="pg-hd">
-    <div><div class="pg-title">Levels Master</div><div class="pg-sub">${`ITICS Taxonomy — ${TAX.L0.length} Sectors · ${TAX.L1.length} Themes · ${TAX.L2.length} Sub-Themes`}</div></div>
+    <div><div class="pg-title">Taxonomy</div><div class="pg-sub">${`ITICS Taxonomy — ${TAX.L0.length} Sectors · ${TAX.L1.length} Themes · ${TAX.L2.length} Sub-Themes`}</div></div>
     <div style="display:flex;gap:6px">
       <button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','csv')">CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','xlsx')">XLSX</button>
@@ -2452,15 +2445,14 @@ function renderLevels() {
 }
 
 function renderWorkbench() {
-  let q='', fStatus='all', fType='all', fAna='', viewMode=(currentRole==='analyst'?'mine':'all'), sCol='', sDir='asc';
+  let q='', fStatus='all', fType='all', fAna='', sCol='', sDir='asc';
   const canRM = currentRole==='rm'||currentRole==='admin';
   function getRows() {
     return WORKBENCH.filter(w=>{
-      if (viewMode==='mine') {
-        if (currentRole==='analyst'   && w.assignedTo!==currentUser.name) return false;
-        if (currentRole==='qc'        && w.wfStatus!=='PENDING_QC')       return false;
-        if (currentRole==='committee' && w.wfStatus!=='PENDING_IC')       return false;
-      }
+      // Role-based visibility: Analyst sees only own; QC sees only own; RM/Admin see all
+      if (currentRole==='analyst'   && w.assignedTo!==currentUser.name) return false;
+      if (currentRole==='qc'        && w.qcAssignedTo!==currentUser.name) return false;
+      if (currentRole==='committee' && w.wfStatus!=='PENDING_IC')         return false;
       if (fStatus!=='all' && w.wfStatus!==fStatus) return false;
       if (fType  !=='all' && w.type   !==fType)    return false;
       if (fAna) {
@@ -2480,11 +2472,6 @@ function renderWorkbench() {
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <div style="display:flex;gap:2px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:3px">
-      ${!canRM?`<button id="wb-btn-mine" class="btn btn-sm btn-primary" onclick="window.wbView('mine')">My Companies</button>`:''}
-      ${!canRM?`<button id="wb-btn-all"  class="btn btn-sm btn-ghost"   style="background:none;border:none" onclick="window.wbView('all')">All Companies</button>`:''}
-    </div>
-    <div id="wb-badges" style="display:flex;gap:6px;flex-wrap:wrap"></div>
   </div>
   <div class="tbl-wrap">
     <div class="tbl-bar" style="flex-wrap:wrap;gap:8px">
@@ -2537,23 +2524,14 @@ function renderWorkbench() {
     const qcP  = WORKBENCH.filter(w=>w.wfStatus==='PENDING_QC').length;
     const icP  = WORKBENCH.filter(w=>w.wfStatus==='PENDING_IC').length;
     // toggle buttons
-    const mb=document.getElementById('wb-btn-mine'), ab=document.getElementById('wb-btn-all');
-    if(mb){mb.className='btn btn-sm '+(viewMode==='mine'?'btn-primary':'btn-ghost');mb.style=viewMode==='mine'?'':'background:none;border:none';}
-    if(ab){ab.className='btn btn-sm '+(viewMode==='all'?'btn-primary':'btn-ghost'); ab.style=viewMode==='all' ?'':'background:none;border:none';}
-    // badges
-    const bd=document.getElementById('wb-badges');
-    if(bd) bd.innerHTML=
-      (currentRole==='analyst'?`<span style="font-size:11.5px;padding:3px 9px;border-radius:4px;background:var(--blue-bg);border:1px solid var(--blue-bd);color:var(--blue)">${myP} pending</span>`:'') +
-      (currentRole==='qc'||canRM?`<span style="font-size:11.5px;padding:3px 9px;border-radius:4px;background:var(--purple-bg);border:1px solid var(--purple-bd);color:var(--purple)">${qcP} in QC</span>`:'') +
-      (currentRole==='committee'||canRM?`<span style="font-size:11.5px;padding:3px 9px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber)">${icP} in IC</span>`:'');
-    document.getElementById('wb-cnt').textContent = rows.length+' result'+(rows.length!==1?'s':'');
+        document.getElementById('wb-cnt').textContent = rows.length+' result'+(rows.length!==1?'s':'');
     const wfLabel={'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC','COMPLETED':'Completed'};
     const wfCls  ={'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee','COMPLETED':'bw-gc'};
     if (!window._wbSel) window._wbSel = {};
     const asgMode = window._wbAssignMode && canRM;
     const totalWbSel = asgMode ? Object.keys(window._wbSel).filter(k=>window._wbSel[k]).length : 0;
     document.getElementById('wb-body').innerHTML = rows.length===0
-      ? `<tr><td colspan="${asgMode?12:11}"><div class="empty-state"><div class="empty-title">No items match</div><div class="empty-sub">Try "All" or clear filters</div></div></td></tr>`
+      ? `<tr><td colspan="${asgMode?12:11}"><div class="empty-state"><div class="empty-title">No items match</div><div class="empty-sub">Try adjusting filters</div></div></td></tr>`
       : rows.map(w=>{
           const isMyItem  = currentRole==='analyst'   && w.assignedTo===currentUser.name && w.wfStatus==='PENDING_ANALYST';
           const isQCItem  = currentRole==='qc'        && w.wfStatus==='PENDING_QC';
@@ -2605,7 +2583,6 @@ function renderWorkbench() {
   window.wbAna    = v => { fAna=v; draw(); }; // fAna format: 'Name:role' or ''
   window.wbStatus = v => { fStatus=v; draw(); };
   window.wbType   = v => { fType=v; draw(); };
-  window.wbView   = v => { viewMode=v; draw(); };
   window.wbSort   = col => { sDir=sCol===col?(sDir==='asc'?'desc':'asc'):'asc'; sCol=col; draw(); };
   draw();
 }
@@ -4171,7 +4148,7 @@ window.asgLeaveCover=function(){
 // -- Levels Bulk Upload --
 window.openLevelBulkUpload = function() {
   if (currentRole !== 'rm' && currentRole !== 'admin') { toast('Only RM can modify levels.','err'); return; }
-  showModal('<div class="m-hd"><div><div class="m-title">Bulk Upload Levels</div>'
+  showModal('<div class="m-hd"><div><div class="m-title">Bulk Upload Taxonomy</div>'
     +'<div class="m-sub">Upload Sector, Theme and Sub-Theme entries via XLSX template</div></div>'
     +'<button class="m-close" onclick="closeModal()">&#x2715;</button></div>'
     +'<div class="m-body">'
@@ -4257,7 +4234,7 @@ window.doLevelBulkUpload = function() {
         });
       }
       AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:currentRole,
-        action:'Levels Bulk Upload',co:'--',year:'--',
+        action:'Taxonomy Bulk Upload',co:'--',year:'--',
         ts:new Date().toLocaleString('en-GB'),
         detail:'Added Sectors:'+addedL0+' Themes:'+addedL1+' Sub-Themes:'+addedL2+'. Skipped (duplicates): '+skipped});
       closeModal();
@@ -4286,27 +4263,129 @@ window.wbChkAll = function(checked) {
   renderWorkbench();
 };
 // Open assignment modal for selected companies
+// Distribute state
+window._distMode = false; // false = bulk assign all to one; true = distribute mode
+window._distRows = []; // [{name, count}] per analyst in distribute mode
+
 window.openWbAsgModal = function() {
   var ids = Object.keys(window._wbSel||{}).filter(function(k){return window._wbSel[k];});
   if (!ids.length) { toast('No tasks selected.','warn'); return; }
+  window._distMode = false;
+  window._wbAsgIds = ids;
+  wbRenderAsgModal();
+};
+
+window.wbRenderAsgModal = function() {
+  var ids = window._wbAsgIds || [];
+  var n = ids.length;
   var anaOpts = '<option value="">Keep existing</option>'+ROLE_USERS.analyst.map(function(u){return '<option value="'+u.name+'">'+u.name+'</option>';}).join('');
   var qcOpts  = '<option value="">Keep existing</option>'+ROLE_USERS.qc.map(function(u){return '<option value="'+u.name+'">'+u.name+'</option>';}).join('');
+
+  // Build distribute rows HTML
+  var distRowsHtml = '';
+  if (window._distMode) {
+    var used = (window._distRows||[]).reduce(function(s,r){return s+(parseInt(r.count)||0);},0);
+    var remaining = n - used;
+    distRowsHtml = '<div style="margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--txt3);margin-bottom:8px">'
+      +'<span>Allocate '+n+' companies across analysts</span>'
+      +'<span id="dist-rem" style="color:'+(remaining<0?'var(--red)':'var(--txt2)')+'">'+remaining+' unallocated</span>'
+      +'</div>'
+      +'<table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr><td style="font-size:11px;color:var(--txt3);padding:3px 6px">Analyst</td>'
+      +'<td style="font-size:11px;color:var(--txt3);padding:3px 6px">Count</td>'
+      +'<td style="font-size:11px;color:var(--txt3);padding:3px 6px">QC Reviewer</td>'
+      +'<td></td></tr></thead><tbody id="dist-tbody">';
+    (window._distRows||[]).forEach(function(r,i){
+      var aOpts = ROLE_USERS.analyst.map(function(u){return '<option value="'+u.name+'"'+(u.name===r.analyst?' selected':'')+'>'+u.name+'</option>';}).join('');
+      var qOpts = '<option value="">Round-robin</option>'+ROLE_USERS.qc.map(function(u){return '<option value="'+u.name+'"'+(u.name===r.qc?' selected':'')+'>'+u.name+'</option>';}).join('');
+      distRowsHtml += '<tr style="border-top:1px solid var(--border)">'
+        +'<td style="padding:5px 6px"><select class="fs" style="padding:4px 8px;min-width:140px" onchange="wbDistUpd('+i+',\'analyst\',this.value)">'+aOpts+'</select></td>'
+        +'<td style="padding:5px 6px"><input class="fi" type="number" min="0" max="'+n+'" value="'+(r.count||0)+'" style="width:64px;padding:4px 8px;font-family:var(--mono)" onchange="wbDistUpd('+i+',\'count\',this.value)"></td>'
+        +'<td style="padding:5px 6px"><select class="fs" style="padding:4px 8px;min-width:130px" onchange="wbDistUpd('+i+',\'qc\',this.value)">'+qOpts+'</select></td>'
+        +'<td style="padding:5px 6px"><button class="btn btn-ghost btn-xs" onclick="wbDistRemRow('+i+')">&#x2715;</button></td>'
+        +'</tr>';
+    });
+    distRowsHtml += '</tbody></table>'
+      +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="wbDistAddRow()">+ Add Person</button>'
+      +'</div>';
+  }
+
+  var body = window._distMode
+    ? distRowsHtml
+      + '<div class="fg" style="margin-top:10px"><label class="fl">Reason <span class="req">*</span></label>'
+      + '<input class="fi" id="wbasg-reason" placeholder="e.g. Workload rebalancing..."></div>'
+    : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+      + '<div class="fg"><label class="fl">Assign Analyst</label><select class="fs" id="wbasg-analyst">'+anaOpts+'</select></div>'
+      + '<div class="fg"><label class="fl">Assign QC</label><select class="fs" id="wbasg-qc">'+qcOpts+'</select></div>'
+      + '</div>'
+      + '<div class="fg" style="margin-top:12px"><label class="fl">Reason <span class="req">*</span></label>'
+      + '<input class="fi" id="wbasg-reason" placeholder="e.g. Workload rebalancing, analyst on leave..."></div>';
+
+  var modeToggle = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+    +'<span style="font-size:12.5px;font-weight:600">'+n+' compan'+(n===1?'y':'ies')+' selected</span>'
+    +'<div style="flex:1"></div>'
+    +'<span style="font-size:11.5px;color:var(--txt3)">Mode:</span>'
+    +'<button class="btn btn-sm '+(window._distMode?'btn-ghost':'btn-primary')+'" onclick="window._distMode=false;wbRenderAsgModal()">Bulk Assign</button>'
+    +'<button class="btn btn-sm '+(window._distMode?'btn-primary':'btn-ghost')+'" onclick="window._distMode=true;if(!(window._distRows&&window._distRows.length))window._distRows=[{analyst:ROLE_USERS.analyst[0]?.name||\'\',count:'+n+',qc:\'\'}];wbRenderAsgModal()">Distribute</button>'
+    +'</div>';
+
   showModal('<div class="m-hd">'
-    +'<div><div class="m-title">Assign Selected Companies</div>'
-    +'<div class="m-sub">'+ids.length+' compan'+(ids.length===1?'y':'ies')+' selected</div></div>'
+    +'<div><div class="m-title">Assign Companies</div></div>'
     +'<button class="m-close" onclick="closeModal()">&#x2715;</button></div>'
-    +'<div class="m-body">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
-    +'<div class="fg"><label class="fl">Assign Analyst</label><select class="fs" id="wbasg-analyst">'+anaOpts+'</select></div>'
-    +'<div class="fg"><label class="fl">Assign QC</label><select class="fs" id="wbasg-qc">'+qcOpts+'</select></div>'
-    +'</div>'
-    +'<div class="fg" style="margin-top:12px"><label class="fl">Reason <span class="req">*</span></label>'
-    +'<input class="fi" id="wbasg-reason" placeholder="e.g. Workload rebalancing, analyst on leave..."></div>'
-    +'</div>'
+    +'<div class="m-body">'+modeToggle+body+'</div>'
     +'<div class="m-foot">'
     +'<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>'
-    +'<button class="btn btn-primary" onclick="wbAsgApply()">Apply Assignment</button>'
-    +'</div>', 'm-md');
+    +'<button class="btn btn-primary" onclick="'+(window._distMode?'wbDistApply()':'wbAsgApply()')+'">'
+    +(window._distMode?'Distribute Companies':'Apply Assignment')
+    +'</button></div>', 'm-lg');
+};
+
+window.wbDistUpd = function(i, field, val) {
+  if (!window._distRows) return;
+  window._distRows[i][field] = field==='count' ? parseInt(val)||0 : val;
+  wbRenderAsgModal();
+};
+window.wbDistAddRow = function() {
+  if (!window._distRows) window._distRows = [];
+  window._distRows.push({analyst: ROLE_USERS.analyst[0]?.name||'', count:0, qc:''});
+  wbRenderAsgModal();
+};
+window.wbDistRemRow = function(i) {
+  if (!window._distRows) return;
+  window._distRows.splice(i,1);
+  wbRenderAsgModal();
+};
+window.wbDistApply = function() {
+  var ids = window._wbAsgIds || [];
+  var rows = window._distRows || [];
+  var rs = (document.getElementById('wbasg-reason')?.value||'').trim();
+  if (!rs) { toast('Reason is required.','err'); return; }
+  var total = rows.reduce(function(s,r){return s+(parseInt(r.count)||0);},0);
+  if (total !== ids.length) { toast('Allocated count ('+total+') must equal selected companies ('+ids.length+').','err'); return; }
+  if (rows.some(function(r){return !r.analyst;})) { toast('All rows must have an analyst selected.','err'); return; }
+  // Assign companies to analysts per the distribution
+  var idx=0, count=0;
+  var used = 0;
+  rows.forEach(function(r){
+    var c = parseInt(r.count)||0;
+    var slice = ids.slice(used, used+c);
+    used += c;
+    slice.forEach(function(id){
+      var w = WORKBENCH.find(function(x){return x.id===id;}); if(!w) return;
+      var ch=[];
+      if(r.analyst && r.analyst!==w.assignedTo){ch.push('Analyst: '+w.assignedTo+' \u2192 '+r.analyst); w.assignedTo=r.analyst;}
+      if(r.qc && r.qc!==w.qcAssignedTo){ch.push('QC: '+w.qcAssignedTo+' \u2192 '+r.qc); w.qcAssignedTo=r.qc;}
+      if(ch.length) AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:currentRole,
+        action:'Distributed Assignment',co:w.coName,year:'--',
+        ts:new Date().toLocaleString('en-GB'),
+        detail:ch.join(' | ')+'. Reason: '+rs});
+    });
+  });
+  window._wbSel={}; window._distRows=[]; window._distMode=false;
+  closeModal();
+  toast('Distributed '+ids.length+' companies across '+rows.length+' analyst'+(rows.length!==1?'s':'')+'.','ok');
+  renderWorkbench();
 };
 window.wbAsgApply = function() {
   var na = document.getElementById('wbasg-analyst')?.value;
