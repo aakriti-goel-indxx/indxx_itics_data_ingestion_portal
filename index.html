@@ -4839,12 +4839,25 @@ function renderAutomation() {
   function dlRenderForm(tab) {
     const panel = document.getElementById('dlFormPanel');
     if (!panel) return;
+    const COUNTRY_ISO2_MAP = {
+      'Australia':'AU','Canada':'CA','France':'FR','Germany':'DE',
+      'India':'IN','Japan':'JP','Switzerland':'CH','United Kingdom':'GB','United States':'US'
+    };
+    const allCountries = [...new Set(COMPANIES.map(c=>c.country).filter(Boolean))].sort();
+    const bulkCountryOptions = allCountries.map(cn => {
+      const code = COUNTRY_ISO2_MAP[cn] || cn.substring(0,2).toUpperCase();
+      return `<option value="${code}">${cn} (${code})</option>`;
+    }).join('');
+
     if (tab === 'bulk') {
       panel.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
             <label class="dl-lbl">Country Code</label>
-            <input class="dl-input" id="dlBCountry" placeholder="e.g. IN (blank = all)" maxlength="2">
+            <select class="dl-input" id="dlBCountry" style="cursor:pointer;">
+              <option value="">— All countries —</option>
+              ${bulkCountryOptions}
+            </select>
           </div>
           <div>
             <label class="dl-lbl">From Year</label>
@@ -4860,16 +4873,8 @@ function renderAutomation() {
           </div>
         </div>`;
     } else {
-      // Build country list from COMPANIES (unique countries, sorted)
-      const COUNTRY_ISO2 = {
-        'Australia':'AU','Canada':'CA','France':'FR','Germany':'DE',
-        'India':'IN','Japan':'JP','Switzerland':'CH','United Kingdom':'GB','United States':'US'
-      };
-      const uniqueCountries = [...new Set(COMPANIES.map(c=>c.country).filter(Boolean))].sort();
-      const countryOptions = uniqueCountries.map(cn => {
-        const code = COUNTRY_ISO2[cn] || cn.substring(0,2).toUpperCase();
-        return `<option value="${code}">${cn} (${code})</option>`;
-      }).join('');
+      // Reuse bulkCountryOptions already built above
+      const countryOptions = bulkCountryOptions;
 
       panel.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
@@ -4941,9 +4946,9 @@ function renderAutomation() {
       return;
     }
     filtered.sort((a,b) => (a.ticker||a.name).localeCompare(b.ticker||b.name));
-    tickerSel.innerHTML = '<option value="">— Select security —</option>' +
+    tickerSel.innerHTML = '<option value="">— Select ticker —</option>' +
       filtered.map(c => {
-        const label = c.ticker ? c.ticker + ' — ' + c.name : c.name;
+        const label = c.ticker ? c.ticker : c.name;
         const val   = c.ticker || c.isin;
         return `<option value="${val}">${label}</option>`;
       }).join('');
@@ -5045,21 +5050,14 @@ function renderAutomation() {
     // Progress / stats bar
     let progressHTML;
     if (!isT) {
-      // running always shows indeterminate (sweeping line), same as pending before total_expected is set
+      // running + pending both show indeterminate sweeping line; pending with known % shows filled bar
       if (p === null || j.status === 'running') {
-        const label = j.status === 'running' && p !== null ? p+'%' : 'Analyzing…';
-        progressHTML = `<div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
-            <div style="width:40%;height:100%;border-radius:3px;background:var(--blue);animation:dl-indeterminate 1.4s ease-in-out infinite;"></div>
-          </div>
-          <span style="font-size:10px;color:var(--txt3);font-family:var(--mono);">${label}</span>
+        progressHTML = `<div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
+          <div style="width:40%;height:100%;border-radius:3px;background:var(--blue);animation:dl-indeterminate 1.4s ease-in-out infinite;"></div>
         </div>`;
       } else {
-        progressHTML = `<div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
-            <div style="width:${p}%;height:100%;border-radius:3px;background:${j.total_failed>0?'var(--amber)':'var(--blue)'};transition:width .4s ease;"></div>
-          </div>
-          <span style="font-size:10px;color:var(--txt2);font-family:var(--mono);min-width:28px;text-align:right;">${p}%</span>
+        progressHTML = `<div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
+          <div style="width:${p}%;height:100%;border-radius:3px;background:${j.total_failed>0?'var(--amber)':'var(--blue)'};transition:width .4s ease;"></div>
         </div>`;
       }
     } else {
