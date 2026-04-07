@@ -4649,1112 +4649,538 @@ window.wbBulkReassign = function() {
 
 
 // ═══════════════════════════════════════════════════════════
-// AUTOMATION PIPELINE DEMO
+// AUTOMATION — iTICS DOWNLOADS PIPELINE
 // ═══════════════════════════════════════════════════════════
 function renderAutomation() {
-  // Track active tab in module-level var so re-renders persist
-  if(typeof window._atTab === 'undefined') window._atTab = 'auto';
+  // ── Config ──────────────────────────────────────────────
+  const BASE_URL = '';
+  const API_PREFIX = BASE_URL + '/api/v1/downloads';
+  const POLL_INTERVAL = 5000;
+  const CURRENT_YEAR = new Date().getFullYear();
 
+  // Track tab
+  if (typeof window._dlTab === 'undefined') window._dlTab = 'bulk';
+  // Job state
+  if (!window._dlJobs)   window._dlJobs   = null; // null = not loaded yet
+  if (!window._dlExpanded) window._dlExpanded = null;
+  if (!window._dlPollTimers) window._dlPollTimers = {};
+
+  // ── API helpers ─────────────────────────────────────────
+  async function apiFetch(url, opts) {
+    opts = opts || {};
+    const headers = { 'Content-Type': 'application/json' };
+    const res = await fetch(url, Object.assign({}, opts, { headers }));
+    const data = await res.json();
+    if (!res.ok) throw { status: res.status, data };
+    return data;
+  }
+  function triggerBulk(body)     { return apiFetch(API_PREFIX+'/bulk/',     { method:'POST', body:JSON.stringify(body) }); }
+  function triggerTargeted(body) { return apiFetch(API_PREFIX+'/targeted/', { method:'POST', body:JSON.stringify(body) }); }
+  function fetchJobs(from, to) {
+    const p = new URLSearchParams();
+    if (from) p.set('from_date', from);
+    if (to)   p.set('to_date',   to);
+    const qs = p.toString();
+    return apiFetch(API_PREFIX+'/jobs/'+(qs?'?'+qs:''));
+  }
+  function fetchJob(id) { return apiFetch(API_PREFIX+'/'+id+'/'); }
+
+  // ── Helpers ─────────────────────────────────────────────
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-IN', {
+      day:'2-digit', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+    });
+  }
+  function calcProgress(j) {
+    if (!j.total_expected) return null;
+    return Math.min(100, Math.round(((j.total_success + j.total_failed + j.total_skipped) / j.total_expected) * 100));
+  }
+  function isTerminal(s) { return ['complete','failed','cancelled'].includes(s); }
+
+  const STATUS_META = {
+    pending:   { bg:'rgba(210,169,34,0.12)',  fg:'#d2a922', icon:'◷' },
+    running:   { bg:'rgba(59,126,255,0.12)',  fg:'var(--blue)', icon:'▶' },
+    complete:  { bg:'rgba(34,197,94,0.12)',   fg:'var(--green)', icon:'✓' },
+    failed:    { bg:'rgba(239,68,68,0.12)',   fg:'var(--red)', icon:'✕' },
+    cancelled: { bg:'rgba(139,148,158,0.12)', fg:'var(--txt2)', icon:'⊘' },
+  };
+  const LEVEL_COLORS = {
+    INFO:    { bg:'rgba(34,197,94,0.10)',   fg:'var(--green)' },
+    WARNING: { bg:'rgba(245,158,11,0.10)',  fg:'var(--amber)' },
+    ERROR:   { bg:'rgba(239,68,68,0.10)',   fg:'var(--red)' },
+  };
+  const EVENT_ICONS = {
+    DOWNLOAD_SUCCESS:'↓✓', DOWNLOAD_FAILED:'↓✕', FILING_SKIPPED:'»',
+    RETRY:'↻', WEBHOOK_RECEIVED:'⚡', SCHEDULED_RUN_STARTED:'⏰',
+    JOB_COMPLETE:'★', MANUAL_UPLOAD:'↑',
+  };
+
+  // ── DEMO DATA (shown when API is unreachable) ────────────
+  const DEMO_JOBS = [
+    { job_id:'3fa85f64-5717-4562-b3fc-2c963f66afa6', job_type:'targeted', status:'complete', country_code:'IN',
+      fiscal_year:null, total_expected:5, total_success:4, total_failed:1, total_skipped:0,
+      created_by:'admin@indxx.com', created_at:'2026-03-30T10:00:00.000000Z',
+      updated_at:'2026-03-30T10:05:32.000000Z', completed_at:'2026-03-30T10:05:32.000000Z',
+      logs:[
+        {id:101,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2024,source:'worker_lambda',details:{s3_key:'reports/IN/TCS/2024.pdf',file_size_bytes:204800},created_at:'2026-03-30T10:03:10.000000Z'},
+        {id:102,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2023,source:'worker_lambda',details:{s3_key:'reports/IN/TCS/2023.pdf',file_size_bytes:198400},created_at:'2026-03-30T10:03:28.000000Z'},
+        {id:103,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2022,source:'worker_lambda',details:{s3_key:'reports/IN/TCS/2022.pdf',file_size_bytes:312000},created_at:'2026-03-30T10:03:55.000000Z'},
+        {id:104,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2021,source:'worker_lambda',details:{s3_key:'reports/IN/TCS/2021.pdf',file_size_bytes:276480},created_at:'2026-03-30T10:04:20.000000Z'},
+        {id:105,event_type:'DOWNLOAD_FAILED',level:'ERROR',fiscal_year:2020,source:'worker_lambda',details:{error:'HTTP 403 from source URL',url:'https://example.com/report.pdf'},created_at:'2026-03-30T10:04:55.000000Z'},
+        {id:106,event_type:'JOB_COMPLETE',level:'INFO',fiscal_year:null,source:'orchestrator_lambda',details:{summary:'4 succeeded, 1 failed, 0 skipped'},created_at:'2026-03-30T10:05:32.000000Z'},
+      ]},
+    { job_id:'7c9e6679-7425-40de-944b-e07fc1f90ae7', job_type:'bulk', status:'running', country_code:'US',
+      fiscal_year:null, total_expected:120, total_success:67, total_failed:3, total_skipped:5,
+      created_by:'ops@indxx.com', created_at:'2026-03-31T06:30:00.000000Z',
+      updated_at:'2026-03-31T07:12:00.000000Z', completed_at:null,
+      logs:[
+        {id:200,event_type:'SCHEDULED_RUN_STARTED',level:'INFO',fiscal_year:null,source:'django_api',details:{trigger:'manual'},created_at:'2026-03-31T06:30:00.000000Z'},
+        {id:201,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2024,source:'worker_lambda',details:{s3_key:'reports/US/AAPL/2024.pdf',file_size_bytes:1048576},created_at:'2026-03-31T06:32:15.000000Z'},
+        {id:202,event_type:'DOWNLOAD_FAILED',level:'ERROR',fiscal_year:2023,source:'worker_lambda',details:{error:'Timeout after 30s',ticker:'TSLA'},created_at:'2026-03-31T06:45:00.000000Z'},
+        {id:203,event_type:'RETRY',level:'WARNING',fiscal_year:2023,source:'worker_lambda',details:{attempt:2,ticker:'TSLA'},created_at:'2026-03-31T06:45:30.000000Z'},
+      ]},
+    { job_id:'a1b2c3d4-e5f6-7890-abcd-ef1234567890', job_type:'bulk', status:'pending', country_code:null,
+      fiscal_year:null, total_expected:0, total_success:0, total_failed:0, total_skipped:0,
+      created_by:'admin@indxx.com', created_at:'2026-03-31T08:00:00.000000Z',
+      updated_at:'2026-03-31T08:00:00.000000Z', completed_at:null, logs:[]},
+    { job_id:'f9e8d7c6-b5a4-3210-fedc-ba0987654321', job_type:'targeted', status:'failed', country_code:'JP',
+      fiscal_year:null, total_expected:8, total_success:0, total_failed:0, total_skipped:0,
+      created_by:'ops@indxx.com', created_at:'2026-03-29T14:20:00.000000Z',
+      updated_at:'2026-03-29T14:20:05.000000Z', completed_at:'2026-03-29T14:20:05.000000Z',
+      logs:[{id:300,event_type:'DOWNLOAD_FAILED',level:'ERROR',fiscal_year:null,source:'django_api',details:{error:'SQS queue unreachable. Job failed at creation.'},created_at:'2026-03-29T14:20:05.000000Z'}]},
+  ];
+
+  // ── Render shell ─────────────────────────────────────────
   document.getElementById('view').innerHTML = `
+  <style>
+    .dl-input { width:100%;padding:7px 10px;border-radius:5px;border:1px solid var(--border2);
+      background:var(--bg2);color:var(--txt);font-size:12px;font-family:var(--mono);
+      outline:none;box-sizing:border-box; }
+    .dl-input:focus { border-color:var(--blue-bd); }
+    .dl-lbl { font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;
+      letter-spacing:.06em;margin-bottom:4px;display:block; }
+    .dl-btn-primary { padding:8px 20px;border-radius:6px;border:none;background:var(--blue);
+      color:#fff;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font);
+      letter-spacing:.03em;text-transform:uppercase;transition:all .15s; }
+    .dl-btn-primary:disabled { background:var(--bg4);cursor:default;color:var(--txt3); }
+    .dl-btn-secondary { padding:6px 14px;border-radius:5px;border:1px solid var(--border2);
+      background:var(--bg3);color:var(--txt2);font-size:11px;font-weight:600;cursor:pointer;
+      font-family:var(--font);transition:all .15s; }
+    .dl-pill { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;
+      background:var(--bg3);font-size:10px;font-family:var(--mono);color:var(--txt2); }
+    @keyframes dl-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
+    @keyframes dl-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  </style>
   <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);">
 
     <!-- TAB BAR -->
-    <div style="display:flex;align-items:center;gap:0;padding:0 20px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg1);">
-      <button id="atTabAuto" onclick="atSwitchTab('auto')"
-        style="padding:12px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .2s;letter-spacing:.3px;">
-        ⚡ Auto Trigger
+    <div style="display:flex;align-items:center;padding:0 20px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg1);">
+      <button id="dlTabBulk" onclick="dlSwitchTab('bulk')"
+        style="padding:11px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .15s;letter-spacing:.3px;">
+        ⬡ Bulk Download
       </button>
-      <button id="atTabManual" onclick="atSwitchTab('manual')"
-        style="padding:12px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .2s;letter-spacing:.3px;">
-        🎯 Manual Trigger
+      <button id="dlTabTargeted" onclick="dlSwitchTab('targeted')"
+        style="padding:11px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .15s;letter-spacing:.3px;">
+        ◎ Targeted Download
       </button>
     </div>
 
-    <!-- TAB CONTENT -->
-    <div id="atTabContent" style="flex:1;overflow:hidden;"></div>
+    <!-- TRIGGER FORM PANEL -->
+    <div id="dlFormPanel" style="background:var(--bg1);border-bottom:1px solid var(--border);padding:16px 20px;flex-shrink:0;"></div>
+
+    <!-- JOB HISTORY HEADER -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px 6px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:12px;font-weight:700;">Job History</span>
+        <span id="dlJobCount" style="font-size:10px;color:var(--txt3);font-family:var(--mono);"></span>
+        <span id="dlDemoWarn" style="display:none;font-size:10px;padding:2px 8px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber);">⚠ Demo data — API unreachable</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;">Filter</span>
+        <input type="date" id="dlFromDate" class="dl-input" style="width:140px;padding:5px 8px;"
+          onchange="dlLoadJobs()" title="From date">
+        <span style="color:var(--txt3);font-size:11px;">→</span>
+        <input type="date" id="dlToDate" class="dl-input" style="width:140px;padding:5px 8px;"
+          onchange="dlLoadJobs()" title="To date">
+        <button class="dl-btn-secondary" onclick="dlLoadJobs()" id="dlRefreshBtn">↻ Refresh</button>
+        <!-- Summary stats -->
+        <div style="display:flex;gap:10px;margin-left:8px;font-family:var(--mono);font-size:11px;">
+          <div style="text-align:center;"><div id="dlStatRunning" style="font-size:16px;font-weight:800;color:var(--blue);">0</div><div style="font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;">Running</div></div>
+          <div style="text-align:center;"><div id="dlStatPending" style="font-size:16px;font-weight:800;color:var(--amber);">0</div><div style="font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;">Pending</div></div>
+          <div style="text-align:center;"><div id="dlStatDone" style="font-size:16px;font-weight:800;color:var(--green);">0</div><div style="font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;">Done</div></div>
+          <div style="text-align:center;"><div id="dlStatFailed" style="font-size:16px;font-weight:800;color:var(--red);">0</div><div style="font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;">Failed</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JOB LIST -->
+    <div style="flex:1;overflow-y:auto;padding:0 20px 16px;" id="dlJobList">
+      <div style="text-align:center;padding:40px;color:var(--txt3);font-size:12px;">Loading jobs…</div>
+    </div>
   </div>`;
 
-  window.atSwitchTab = function(tab) {
-    window._atTab = tab;
-    ['auto','manual'].forEach(t => {
-      const btn = document.getElementById('atTab'+t.charAt(0).toUpperCase()+t.slice(1));
-      if(btn) {
+  // ── Tab switching ────────────────────────────────────────
+  window.dlSwitchTab = function(tab) {
+    window._dlTab = tab;
+    ['bulk','targeted'].forEach(t => {
+      const btn = document.getElementById('dlTab'+t.charAt(0).toUpperCase()+t.slice(1));
+      if (btn) {
         btn.style.color = t===tab ? 'var(--blue)' : 'var(--txt3)';
         btn.style.borderBottomColor = t===tab ? 'var(--blue)' : 'transparent';
         btn.style.background = t===tab ? 'var(--blue-bg)' : 'transparent';
       }
     });
-    if(tab==='auto') renderAtAuto();
-    else renderAtManual();
+    dlRenderForm(tab);
   };
 
-  // ─── AUTO TAB ───────────────────────────────────────────────
-  function renderAtAuto() {
-    const tc = document.getElementById('atTabContent');
-    if(!tc) return;
-    tc.innerHTML = `
-    <div style="display:grid;grid-template-columns:300px 1fr 300px;height:100%;overflow:hidden;">
-
-      <!-- LEFT: TRIGGER FEED -->
-      <div style="background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-          <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);">Incoming Triggers</span>
-          <span id="atTrigCount" class="mono" style="font-size:11px;color:var(--blue);background:var(--blue-bg);padding:2px 8px;border-radius:10px;border:1px solid var(--blue-bd);">0</span>
-        </div>
-        <div style="flex:1;overflow-y:auto;padding:10px;" id="atFeed"></div>
-      </div>
-
-      <!-- CENTER: PIPELINE -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--bg);">
-        <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-shrink:0;">
+  // ── Render trigger form ──────────────────────────────────
+  function dlRenderForm(tab) {
+    const panel = document.getElementById('dlFormPanel');
+    if (!panel) return;
+    if (tab === 'bulk') {
+      panel.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
-            <div style="font-size:13px;font-weight:700;">Automation Pipeline</div>
-            <div style="font-size:11px;color:var(--txt3);margin-top:1px;">AI-assisted pipeline · Filing trigger → Golden Copy</div>
+            <label class="dl-lbl">Country Code</label>
+            <input class="dl-input" id="dlBCountry" placeholder="e.g. IN (blank = all)" maxlength="2">
           </div>
-          <div style="margin-left:auto;display:flex;gap:12px;align-items:center;">
-            <select id="atSpeed" style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--txt2);font-size:11px;padding:4px 8px;cursor:pointer;" onchange="window._atSpeed=parseFloat(this.value)">
-              <option value="1">1× Speed</option>
-              <option value="2">2× Speed</option>
-              <option value="3">3× Speed</option>
-              <option value="0.5">0.5× Speed</option>
-            </select>
-            <div style="display:flex;align-items:center;gap:5px;padding:3px 10px;background:var(--green-bg);border:1px solid var(--green-bd);border-radius:12px;font-size:10px;font-weight:700;color:var(--green);">
-              <span id="atBlink" style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;"></span>LIVE
-            </div>
+          <div>
+            <label class="dl-lbl">From Year</label>
+            <input class="dl-input" id="dlBFrom" type="number" min="2017" max="${CURRENT_YEAR}" value="2017">
           </div>
-        </div>
-
-        <div style="padding:12px 20px;flex:1;display:flex;flex-direction:column;overflow:hidden;">
-          <!-- Stats row -->
-          <div style="display:flex;gap:8px;margin-bottom:12px;flex-shrink:0;">
-            ${['Triggered','Downloaded','AI Classified','QC Passed','Golden Copy'].map((l,i)=>`
-            <div style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center;">
-              <div id="atStat${i}" class="mono" style="font-size:18px;font-weight:700;color:${['var(--blue)','var(--purple)','var(--teal)','var(--amber)','var(--green)'][i]}">0</div>
-              <div style="font-size:9px;color:var(--txt3);margin-top:2px;text-transform:uppercase;letter-spacing:.4px;">${l}</div>
-            </div>`).join('')}
+          <div>
+            <label class="dl-lbl">To Year</label>
+            <input class="dl-input" id="dlBTo" type="number" min="2017" max="${CURRENT_YEAR}" value="${CURRENT_YEAR}">
           </div>
-
-          <!-- Stage cards -->
-          <div style="display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;" id="atStages"></div>
-
-          <!-- Controls -->
-          <div style="display:flex;gap:8px;padding-top:12px;flex-shrink:0;">
-            <button id="atBtnRun" onclick="atRun()" style="flex:1.5;padding:9px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;">▶ Run Demo</button>
-            <button onclick="atReset()" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--txt2);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;">↺ Reset</button>
-            <button id="atBtnNext" onclick="atNext()" disabled style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--txt2);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;">⏭ Next</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: OUTPUT + LOG -->
-      <div style="border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg1);">
-        <div style="padding:10px 14px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-          <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);">Classification Output</span>
-          <span id="atConfBadge" class="mono" style="font-size:10px;color:var(--green);"></span>
-        </div>
-        <div style="flex:1.4;overflow-y:auto;padding:10px;" id="atOutput">
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--txt3);font-size:12px;gap:8px;opacity:.5;">
-            <div style="font-size:24px;">◈</div>
-            <div>Awaiting classification...</div>
-          </div>
-        </div>
-        <div id="atQCBox" style="margin:0 10px 6px;border-radius:8px;padding:8px 10px;display:none;"></div>
-        <div style="border-top:1px solid var(--border);flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
-          <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);">Live Log</span>
-            <span id="atLogCount" class="mono" style="font-size:10px;color:var(--txt3);">0 events</span>
-          </div>
-          <div style="flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:1px;" id="atLog"></div>
-        </div>
-      </div>
-    </div>`;
-
-    // Init automation state
-    window._atSpeed = 1;
-    window._atRunning = false;
-    window._atFiling = 0;
-    window._atStats = [0,0,0,0,0];
-    window._atLogN = 0;
-    window._atTrigCount = 0;
-
-    const FILINGS = [
-      {co:'Alphabet Inc',isin:'US02079K3059',ctry:'United States',src:'SEC EDGAR',
-       segs:[{l:'Search & Google Services',rev:198.1,pct:68.2,l0:'Communication Services',l1:'Internet & Media',l2:'Search Services',cls:'Pure Play',conf:97},
-             {l:'Google Cloud',rev:43.2,pct:14.9,l0:'Information Technology',l1:'Cloud Computing',l2:'IaaS',cls:'Quasi',conf:91},
-             {l:'YouTube Advertising',rev:36.1,pct:12.4,l0:'Communication Services',l1:'Digital Media',l2:'Video Streaming',cls:'Pure Play',conf:94},
-             {l:'Other Bets',rev:13.4,pct:4.5,l0:'Information Technology',l1:'Emerging Tech',l2:'AI & Robotics',cls:'Quasi',conf:78}]},
-      {co:'Toyota Motor Corp',isin:'JP3633400001',ctry:'Japan',src:'EDINET',
-       segs:[{l:'Automotive',rev:285.0,pct:88.3,l0:'Consumer Discretionary',l1:'Automobiles',l2:'Passenger Vehicles',cls:'Pure Play',conf:99},
-             {l:'Financial Services',rev:22.4,pct:6.9,l0:'Financials',l1:'Consumer Finance',l2:'Auto Finance',cls:'Quasi',conf:87},
-             {l:'Other',rev:15.3,pct:4.8,l0:'Industrials',l1:'Machinery',l2:'Parts & Components',cls:'Marginal',conf:72}]},
-      {co:'Samsung Electronics',isin:'KR7005930003',ctry:'South Korea',src:'DART',
-       segs:[{l:'Semiconductors',rev:312.4,pct:54.1,l0:'Information Technology',l1:'Semiconductors',l2:'Memory Chips',cls:'Pure Play',conf:98},
-             {l:'Consumer Electronics',rev:178.2,pct:30.9,l0:'Consumer Discretionary',l1:'Electronics',l2:'Consumer Devices',cls:'Pure Play',conf:95},
-             {l:'Display Panels',rev:86.4,pct:15.0,l0:'Information Technology',l1:'Electronic Components',l2:'Display Tech',cls:'Pure Play',conf:93}]},
-      {co:'HDFC Bank Ltd',isin:'INE040A01034',ctry:'India',src:'Screener',
-       segs:[{l:'Retail Banking',rev:145.2,pct:62.4,l0:'Financials',l1:'Banking',l2:'Retail Banking',cls:'Pure Play',conf:99},
-             {l:'Wholesale Banking',rev:62.8,pct:27.0,l0:'Financials',l1:'Banking',l2:'Corporate Banking',cls:'Pure Play',conf:98},
-             {l:'Treasury',rev:24.5,pct:10.6,l0:'Financials',l1:'Financial Services',l2:'Asset Management',cls:'Quasi',conf:82}]},
-      {co:'LVMH Moet Hennessy',isin:'FR0000121014',ctry:'France',src:'SEC EDGAR',
-       segs:[{l:'Fashion & Leather Goods',rev:420.3,pct:48.2,l0:'Consumer Discretionary',l1:'Luxury Goods',l2:'Apparel & Accessories',cls:'Pure Play',conf:99},
-             {l:'Wines & Spirits',rev:192.1,pct:22.0,l0:'Consumer Staples',l1:'Beverages',l2:'Premium Spirits',cls:'Pure Play',conf:97},
-             {l:'Perfumes & Cosmetics',rev:156.4,pct:17.9,l0:'Consumer Staples',l1:'Personal Care',l2:'Cosmetics',cls:'Pure Play',conf:96},
-             {l:'Watches & Jewelry',rev:102.2,pct:11.9,l0:'Consumer Discretionary',l1:'Luxury Goods',l2:'Jewelry & Watches',cls:'Pure Play',conf:98}]},
-    ];
-
-    const STAGES = [
-      {id:'s0',n:'Trigger Detection',d:'Monitor SEC EDGAR, EDINET, DART, Screener for new filings',
-       logs:['Polling API endpoints for new filings...','New Annual Report detected (10-K/20-F form)','Metadata extracted: company name, ISIN, period, type','Filing queued for processing pipeline']},
-      {id:'s1',n:'Ingest & Download',d:'Fetch PDF from source registry and validate file integrity',
-       logs:['HTTP GET to source URL initiated...','PDF download in progress (avg 8–14 MB)','SHA-256 checksum verified — file intact','Document ready for storage']},
-      {id:'s2',n:'Store to Cloud (S3)',d:'Persist filing with structured metadata to durable storage',
-       logs:['S3 PUT request dispatched...','Metadata JSON indexed in document registry','Filing ID assigned and audit trail created','Storage confirmed — retrieval latency < 50ms']},
-      {id:'s3',n:'Gemini AI Classification',d:'Gemini 2.0 Flash reads PDF, maps revenue streams to ITICS taxonomy',
-       logs:['Loading PDF into Gemini context window...','Extracting revenue segment table from annual report...','Mapping segments → Sector → Theme → Sub-Theme...','Confidence scores calculated per segment','Structured classification JSON generated']},
-      {id:'s4',n:'QC Gate',d:'Confidence threshold check — auto-accept >= 90%, flag below',
-       logs:['Evaluating per-segment confidence scores...','Checking taxonomy mapping consistency...','Cross-referencing against known sector patterns...','QC decision computed and logged']},
-      {id:'s5',n:'Golden Copy Write',d:'Verified classification written to master ITICS database',
-       logs:['Writing to Golden Copy database...','ITICS record created with full audit trail','Analyst team notified of new classification','Record locked — immutable golden copy stored']},
-    ];
-
-    // Build stage cards
-    function buildStages() {
-      const c = document.getElementById('atStages'); if(!c) return;
-      c.innerHTML = '';
-      STAGES.forEach((st,i) => {
-        c.innerHTML += `
-        <div id="${st.id}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:all .3s;opacity:.4;">
-          <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;" id="${st.id}hd">
-            <div id="${st.id}num" style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:var(--bg4);color:var(--txt3);flex-shrink:0;transition:all .3s;">${String(i+1).padStart(2,'0')}</div>
-            <div style="flex:1;">
-              <div style="font-size:12px;font-weight:700;">${st.n}</div>
-              <div style="font-size:10px;color:var(--txt3);margin-top:1px;">${st.d}</div>
-            </div>
-            <div id="${st.id}ss" style="font-size:10px;font-weight:700;color:var(--txt3);">waiting</div>
-          </div>
-          <div id="${st.id}prog" style="height:2px;background:var(--border);overflow:hidden;">
-            <div id="${st.id}pb" style="height:100%;background:var(--teal);width:0;transition:width .3s;"></div>
-          </div>
-          <div id="${st.id}body" style="max-height:0;overflow:hidden;transition:max-height .4s;padding:0 14px;">
-            <div id="${st.id}detail" style="font-family:var(--mono);font-size:10px;color:var(--txt2);background:var(--bg3);border-radius:6px;padding:7px 9px;border:1px solid var(--border);margin-bottom:8px;line-height:1.7;"></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="dl-btn-primary" id="dlTriggerBtn" onclick="dlTrigger()">Trigger Job</button>
+            <span id="dlTrigMsg" style="font-size:11px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
           </div>
         </div>`;
-      });
-    }
-    buildStages();
-
-    // Drip in trigger cards
-    function addTrigCard(idx) {
-      if(idx >= FILINGS.length) return;
-      const f = FILINGS[idx];
-      window._atTrigCount++;
-      const el = document.getElementById('atTrigCount');
-      if(el) el.textContent = window._atTrigCount;
-      atStat(0, window._atStats[0]+1, 0);
-      const srcColor = f.src==='SEC EDGAR'?'var(--blue)':f.src==='EDINET'?'var(--purple)':f.src==='DART'?'var(--teal)':'var(--amber)';
-      const srcBg = f.src==='SEC EDGAR'?'var(--blue-bg)':f.src==='EDINET'?'var(--purple-bg)':f.src==='DART'?'var(--teal-bg)':'var(--amber-bg)';
-      const feed = document.getElementById('atFeed');
-      if(!feed) return;
-      const card = document.createElement('div');
-      card.id = 'atc'+idx;
-      card.onclick = () => { if(!window._atRunning){window._atFiling=idx;atRun();} };
-      card.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;';
-      card.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-          <span style="font-size:12px;font-weight:700;">${f.co}</span>
-          <span style="font-size:9px;padding:2px 6px;border-radius:8px;font-weight:700;background:${srcBg};color:${srcColor};border:1px solid ${srcColor}33;">${f.src}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="mono" style="font-size:10px;color:var(--txt3);">${f.isin}</span>
-          <span id="atcs${idx}" style="font-size:10px;font-weight:700;color:var(--blue);margin-left:auto;">● NEW</span>
-        </div>`;
-      feed.insertBefore(card, feed.firstChild);
-      atLog('TRIG', `Filing detected: ${f.co} via ${f.src}`, 'trig');
-    }
-
-    function atStat(idx, val, _) {
-      window._atStats[idx] = val;
-      const el = document.getElementById('atStat'+idx);
-      if(el) el.textContent = val;
-    }
-
-    const BASE = 1600;
-    function atDelay(ms) { return new Promise(r => setTimeout(r, ms / (window._atSpeed||1))); }
-
-    window.atRun = async function() {
-      if(window._atRunning) return;
-      const f = FILINGS[window._atFiling];
-      window._atRunning = true;
-      document.getElementById('atBtnRun').disabled = true;
-      document.getElementById('atBtnNext').disabled = true;
-
-      const tc2 = document.getElementById('atc'+window._atFiling);
-      if(tc2){tc2.style.borderColor='rgba(79,158,255,0.4)';tc2.style.background='rgba(79,158,255,0.05)';}
-      const tcs = document.getElementById('atcs'+window._atFiling);
-      if(tcs){tcs.textContent='⟳ PROCESSING';tcs.style.color='var(--teal)';}
-
-      buildStages();
-      document.getElementById('atOutput').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--txt3);font-size:12px;gap:8px;opacity:.5;"><div style="font-size:24px;">◈</div><div>Awaiting classification...</div></div>`;
-      document.getElementById('atQCBox').style.display = 'none';
-      document.getElementById('atConfBadge').textContent = '';
-
-      for(let i=0; i<STAGES.length; i++) {
-        const st = STAGES[i];
-        const el = document.getElementById(st.id);
-        const ss = document.getElementById(st.id+'ss');
-        const pb = document.getElementById(st.id+'pb');
-        const bd = document.getElementById(st.id+'body');
-        const dt = document.getElementById(st.id+'detail');
-        const nm = document.getElementById(st.id+'num');
-        const hd = document.getElementById(st.id+'hd');
-
-        el.style.opacity='1';el.style.borderColor='rgba(0,229,200,0.4)';
-        hd.style.background='rgba(0,229,200,0.05)';
-        nm.style.background='var(--teal)';nm.style.color='#000';
-        ss.textContent='⟳ running';ss.style.color='var(--teal)';
-        bd.style.maxHeight='100px';bd.style.paddingTop='0';bd.style.paddingBottom='8px';
-
-        let prog=0;
-        const pInt = setInterval(()=>{prog=Math.min(prog+Math.random()*10,90);pb.style.width=prog+'%';},180/(window._atSpeed||1));
-
-        const tags=['TRIG','INGEST','S3','AI','QC','GC'];
-        for(const log of st.logs) {
-          await atDelay(BASE*0.55);
-          if(dt) dt.textContent=log;
-          atLog(tags[i], log, ['trig','dl','dl','ai','qc','gc'][i]);
-        }
-
-        if(i===3) {
-          await atDelay(BASE*0.4);
-          atShowCls(f, 'shimmer');
-          await atDelay(BASE*0.8);
-          atShowCls(f, 'full');
-          atStat(2, window._atStats[2]+1, 0);
-        }
-        if(i===4) {
-          await atDelay(BASE*0.4);
-          const avgConf = Math.round(f.segs.reduce((a,s)=>a+s.conf,0)/f.segs.length);
-          const pass = avgConf >= 90;
-          atShowQC(pass, avgConf);
-          if(pass){atStat(3,window._atStats[3]+1,0);}
-          document.getElementById('atConfBadge').textContent = avgConf+'% conf';
-          document.getElementById('atConfBadge').style.color = pass?'var(--green)':'var(--amber)';
-        }
-
-        clearInterval(pInt);pb.style.width='100%';
-        await atDelay(300);
-
-        el.style.borderColor='rgba(0,240,122,0.3)';hd.style.background='rgba(0,240,122,0.04)';
-        nm.style.background='var(--green)';nm.style.color='#000';
-        ss.textContent='✓ done';ss.style.color='var(--green)';
-        await atDelay(300);
-      }
-
-      atStat(4,window._atStats[4]+1,0);
-      atStat(1,window._atStats[1]+1,0);
-      if(tc2){tc2.style.borderColor='rgba(0,240,122,0.3)';tc2.style.background='rgba(0,240,122,0.03)';}
-      if(tcs){tcs.textContent='✓ GC';tcs.style.color='var(--green)';}
-      atLog('GC','Classification written to Golden Copy — record locked','gc');
-      window._atRunning=false;
-      document.getElementById('atBtnRun').disabled=false;
-      document.getElementById('atBtnRun').textContent='▶ Run Again';
-      document.getElementById('atBtnNext').disabled=false;
-    };
-
-    function atShowCls(f, phase) {
-      const out = document.getElementById('atOutput'); if(!out) return;
-      if(phase==='shimmer'){
-        out.innerHTML=`<div style="font-size:13px;font-weight:700;margin-bottom:2px;">${f.co}</div>
-        <div class="mono" style="font-size:10px;color:var(--txt3);margin-bottom:10px;">${f.isin} · Classifying...</div>
-        ${f.segs.map(()=>`<div style="height:56px;border-radius:8px;background:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;margin-bottom:6px;"></div>`).join('')}`;
-        return;
-      }
-      const cols=['var(--blue)','var(--teal)','var(--purple)','var(--amber)','var(--green)','var(--red)'];
-      out.innerHTML=`<div style="font-size:13px;font-weight:700;margin-bottom:2px;">${f.co}</div>
-      <div class="mono" style="font-size:10px;color:var(--txt3);margin-bottom:10px;">${f.isin} · ${f.ctry}</div>
-      ${f.segs.map((s,i)=>`
-      <div id="atseg${i}" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;opacity:0;transform:translateY(4px);transition:all .3s ${i*100}ms;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-          <span style="font-size:11px;font-weight:700;">${s.l}</span>
-          <span class="mono" style="font-size:11px;font-weight:700;color:${cols[i%cols.length]}">${s.pct.toFixed(1)}%</span>
-        </div>
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:5px;">${s.l0} › ${s.l1} › ${s.l2}</div>
-        <div style="height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:5px;">
-          <div id="atbar${i}" style="height:100%;background:${cols[i%cols.length]};width:0;transition:width 1s ease;border-radius:2px;"></div>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-          <span style="font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;background:${s.cls==='Pure Play'?'var(--teal-bg)':s.cls==='Quasi'?'var(--amber-bg)':'var(--bg4)'};color:${s.cls==='Pure Play'?'var(--teal)':s.cls==='Quasi'?'var(--amber)':'var(--txt3)'};border:1px solid ${s.cls==='Pure Play'?'var(--teal-bd)':s.cls==='Quasi'?'var(--amber-bd)':'var(--border2)'};">${s.cls}</span>
-          <span style="font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);">Automation</span>
-          <span style="font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);">${s.conf}% conf</span>
-        </div>
-      </div>`).join('')}`;
-      f.segs.forEach((_,i)=>{
-        setTimeout(()=>{
-          const seg=document.getElementById('atseg'+i);
-          if(seg){seg.style.opacity='1';seg.style.transform='none';}
-          setTimeout(()=>{const b=document.getElementById('atbar'+i);if(b)b.style.width=(f.segs[i].pct*0.88)+'%';},100);
-        },i*120);
-      });
-    }
-
-    function atShowQC(pass, conf) {
-      const d = document.getElementById('atQCBox'); if(!d) return;
-      d.style.display='block';
-      if(pass){
-        d.style.background='var(--green-bg)';d.style.border='1px solid var(--green-bd)';d.style.borderRadius='8px';d.style.padding='8px 10px';
-        d.innerHTML=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;"><span style="font-size:13px;">✓</span><span style="font-size:12px;font-weight:700;color:var(--green);">QC ACCEPTED — Auto-pushed to Golden Copy</span></div><div class="mono" style="font-size:10px;color:var(--txt3);">Avg confidence ${conf}% ≥ 90% threshold · All segments validated</div>`;
-      } else {
-        d.style.background='var(--amber-bg)';d.style.border='1px solid var(--amber-bd)';d.style.borderRadius='8px';d.style.padding='8px 10px';
-        d.innerHTML=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;"><span style="font-size:13px;">⚑</span><span style="font-size:12px;font-weight:700;color:var(--amber);">QC FLAGGED — Routed to Analyst Review</span></div><div class="mono" style="font-size:10px;color:var(--txt3);">Avg confidence ${conf}% · Below 90% threshold · Manual verification required</div>`;
-      }
-    }
-
-    let _atLogN=0;
-    function atLog(tag, msg, tagClass) {
-      _atLogN++;
-      const lc=document.getElementById('atLogCount');
-      if(lc) lc.textContent=_atLogN+' events';
-      const area=document.getElementById('atLog'); if(!area) return;
-      const n=new Date();
-      const ts=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
-      const tagColors={trig:'var(--blue)',dl:'var(--purple)',ai:'var(--teal)',qc:'var(--amber)',gc:'var(--green)'};
-      const tagBgs={trig:'var(--blue-bg)',dl:'var(--purple-bg)',ai:'var(--teal-bg)',qc:'var(--amber-bg)',gc:'var(--green-bg)'};
-      const line=document.createElement('div');
-      line.style.cssText='display:flex;gap:6px;align-items:baseline;padding:1px 0;';
-      line.innerHTML=`<span class="mono" style="font-size:9px;color:var(--txt3);flex-shrink:0;">${ts}</span><span class="mono" style="font-size:9px;padding:0 5px;border-radius:3px;font-weight:700;background:${tagBgs[tagClass]||'var(--bg3)'};color:${tagColors[tagClass]||'var(--txt3)'};flex-shrink:0;">${tag}</span><span class="mono" style="font-size:10px;color:var(--txt2);">${esc(msg)}</span>`;
-      area.appendChild(line);
-      area.scrollTop=area.scrollHeight;
-    }
-
-    window.atReset = function() {
-      window._atRunning=false; window._atFiling=0;
-      window._atStats=[0,0,0,0,0];
-      buildStages();
-      const out=document.getElementById('atOutput');
-      if(out) out.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--txt3);font-size:12px;gap:8px;opacity:.5;"><div style="font-size:24px;">◈</div><div>Awaiting classification...</div></div>`;
-      const qc=document.getElementById('atQCBox'); if(qc) qc.style.display='none';
-      const log=document.getElementById('atLog'); if(log) log.innerHTML=''; _atLogN=0;
-      const lc=document.getElementById('atLogCount'); if(lc) lc.textContent='0 events';
-      const cb=document.getElementById('atConfBadge'); if(cb) cb.textContent='';
-      const br=document.getElementById('atBtnRun'); if(br){br.disabled=false;br.textContent='▶ Run Demo';}
-      const bn=document.getElementById('atBtnNext'); if(bn) bn.disabled=false;
-    };
-
-    window.atNext = function() {
-      if(window._atRunning) return;
-      window._atFiling=(window._atFiling+1)%FILINGS.length;
-      atReset();
-    };
-
-    // Auto-drip triggers
-    window._atDrip = [];
-    [0,1,2,3,4].forEach((i,idx)=>{
-      window._atDrip.push(setTimeout(()=>addTrigCard(i), (idx*3500)));
-    });
-  } // end renderAtAuto
-
-  // ─── MANUAL TAB ─────────────────────────────────────────────
-  function renderAtManual() {
-    const tc = document.getElementById('atTabContent');
-    if(!tc) return;
-
-    // Build enriched company list: join COMPANIES + WORKBENCH for type/years data
-    const allCos = (typeof COMPANIES !== 'undefined' ? COMPANIES : []).filter(c=>c.status==='Active');
-    const wbMap = {}; // coId -> workbench entry
-    (typeof WORKBENCH !== 'undefined' ? WORKBENCH : []).forEach(w=>{ wbMap[w.coId]=w; });
-
-    // Enriched company objects carry type + pendingYears + yearsGC from WORKBENCH
-    const enriched = allCos.map(c=>{
-      const wb = wbMap[c.id];
-      return {
-        ...c,
-        wbType: wb ? wb.type : 'AR_UPDATE',      // AR_UPDATE | FRESH | INVALIDATED
-        pendingYears: wb ? (wb.pendingYears||[]) : [],
-        yearsGC: wb ? (wb.yearsGC||[]) : [],
+    } else {
+      // Build country list from COMPANIES (unique countries, sorted)
+      const COUNTRY_ISO2 = {
+        'Australia':'AU','Canada':'CA','France':'FR','Germany':'DE',
+        'India':'IN','Japan':'JP','Switzerland':'CH','United Kingdom':'GB','United States':'US'
       };
-    });
+      const uniqueCountries = [...new Set(COMPANIES.map(c=>c.country).filter(Boolean))].sort();
+      const countryOptions = uniqueCountries.map(cn => {
+        const code = COUNTRY_ISO2[cn] || cn.substring(0,2).toUpperCase();
+        return `<option value="${code}">${cn} (${code})</option>`;
+      }).join('');
 
-    const countries = [...new Set(enriched.map(c=>c.country))].sort();
-
-    // State — reset if switching back
-    if(!window._mtState) window._mtState = {
-      mode: 'bulk',
-      typeFilter: 'ALL',     // 'ALL' | 'AR_UPDATE' | 'FRESH'
-      bulkSelected: new Set(),
-      singleId: null,
-      geoCountry: '',
-      batchSize: 5,
-      years: new Set(),           // auto-set by refreshYearsForSelection()
-      running: false,
-      logN: 0,
-    };
-    const S = window._mtState;
-
-    const availYears = [2017,2018,2019,2020,2021,2022,2023,2024,2025];
-
-    // Filtered company list based on typeFilter
-    function filteredCos() {
-      const base = enriched.filter(c=>c.wbType!=='INVALIDATED');
-      if(S.typeFilter==='ALL') return base;
-      return base.filter(c=>c.wbType===S.typeFilter);
-    }
-
-    // For a given company + user-selected years: split into actionable vs skipped
-    function resolveYears(co, userYears) {
-      const pending = new Set(co.pendingYears);
-      const gc = new Set(co.yearsGC);
-      const actionable = userYears.filter(y=>pending.has(y));
-      const alreadyDone = userYears.filter(y=>gc.has(y));
-      const notInScope = userYears.filter(y=>!pending.has(y)&&!gc.has(y));
-      return { actionable, alreadyDone, notInScope };
-    }
-
-    // Auto-select years based on the currently selected companies:
-    // - FRESH companies   → all availYears (no prior GC exists)
-    // - AR_UPDATE companies → union of their pendingYears
-    // - Mixed             → union of all pendingYears across all selected companies
-    // User can still manually adjust after auto-select.
-    function refreshYearsForSelection() {
-      const cos = getModeCompanies();
-      if(!cos.length) {
-        // Nothing selected — clear years, re-render buttons
-        S.years = new Set();
-      } else {
-        const hasFresh  = cos.some(c=>c.wbType==='FRESH');
-        const hasAR     = cos.some(c=>c.wbType==='AR_UPDATE');
-        if(hasFresh && !hasAR) {
-          // All FRESH — select every available year
-          S.years = new Set(availYears);
-        } else {
-          // AR_UPDATE only, or mixed — union of all companies' pendingYears
-          const union = new Set();
-          cos.forEach(c=>c.pendingYears.forEach(y=>union.add(y)));
-          S.years = union;
-        }
-      }
-      // Update button visuals
-      availYears.forEach(y=>{
-        const btn = document.getElementById('mtYr_'+y);
-        if(!btn) return;
-        const on = S.years.has(y);
-        btn.style.background   = on ? 'var(--teal-bg)' : 'var(--bg3)';
-        btn.style.color        = on ? 'var(--teal)'    : 'var(--txt3)';
-        btn.style.borderColor  = on ? 'var(--teal-bd)' : 'var(--border2)';
-      });
-      const yc = document.getElementById('mtYrCount');
-      if(yc) yc.textContent = S.years.size+' yr'+(S.years.size!==1?'s':'');
-      refreshSummary();
-      renderYearHint();
-    }
-
-    // Summary text for trigger button
-    function _mtSummary() {
-      const cos = getModeCompanies();
-      const n = cos.length;
-      const yrs = S.years.size;
-      const batches = Math.ceil(n / S.batchSize);
-      if(!n || !yrs) return 'No securities or years selected';
-      const arCount = cos.filter(c=>c.wbType==='AR_UPDATE').length;
-      const frCount = cos.filter(c=>c.wbType==='FRESH').length;
-      const typeStr = arCount&&frCount ? `${arCount} AR + ${frCount} Fresh` : arCount ? `${arCount} AR Update` : `${frCount} Fresh`;
-      return `${n} securit${n>1?'ies':'y'} (${typeStr}) · ${yrs} yr${yrs>1?'s':''} · ${batches} batch${batches>1?'es':''}`;
-    }
-    window._mtSummary = _mtSummary;
-
-    function getModeCompanies() {
-      const fc = filteredCos();
-      if(S.mode==='bulk') return fc.filter(c=>S.bulkSelected.has(c.id));
-      if(S.mode==='single') return fc.filter(c=>c.id===S.singleId);
-      if(S.mode==='geo') return fc.filter(c=>c.country===S.geoCountry);
-      return [];
-    }
-
-    function typeChip(wbType) {
-      if(wbType==='FRESH') return `<span style="font-size:8px;padding:1px 5px;border-radius:3px;font-weight:700;background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal-bd);">FRESH</span>`;
-      if(wbType==='AR_UPDATE') return `<span style="font-size:8px;padding:1px 5px;border-radius:3px;font-weight:700;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);">AR UPD</span>`;
-      return `<span style="font-size:8px;padding:1px 5px;border-radius:3px;font-weight:700;background:var(--bg4);color:var(--txt3);">${wbType}</span>`;
-    }
-
-    // ── RENDER COMPANY LIST (used by bulk + geo preview)
-    function renderBulkList() {
-      const list = document.getElementById('mtBulkList'); if(!list) return;
-      const fc = filteredCos();
-      list.innerHTML = fc.length ? fc.map(c=>`
-        <label style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;font-size:11px;transition:background .15s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='var(--bg2)'">
-          <input type="checkbox" id="mtChk_${c.id}" ${S.bulkSelected.has(c.id)?'checked':''} onchange="mtToggleBulk('${c.id}',this.checked)" style="accent-color:var(--blue);cursor:pointer;">
-          <span style="flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</span>
-          ${typeChip(c.wbType)}
-          <span class="mono" style="font-size:9px;color:var(--txt3);">${c.country.substring(0,2).toUpperCase()}</span>
-        </label>`).join('')
-      : `<div style="font-size:11px;color:var(--txt4);text-align:center;padding:16px 0;">No companies match filter</div>`;
-      const bc = document.getElementById('mtBulkCount');
-      const selCount = filteredCos().filter(c=>S.bulkSelected.has(c.id)).length;
-      if(bc) bc.textContent = selCount + ' selected';
-    }
-
-    function renderGeoList() {
-      const list = document.getElementById('mtGeoList'); if(!list) return;
-      const fc = filteredCos().filter(c=>c.country===S.geoCountry);
-      list.innerHTML = fc.length
-        ? fc.map(c=>`
-          <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);font-size:11px;">
-            <span style="width:6px;height:6px;border-radius:50%;background:${c.wbType==='FRESH'?'var(--teal)':'var(--blue)'};flex-shrink:0;"></span>
-            <span style="flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</span>
-            ${typeChip(c.wbType)}
-            <span class="mono" style="font-size:9px;color:var(--txt3);">${c.exchange}</span>
-          </div>`).join('')
-        : `<div style="font-size:11px;color:var(--txt4);text-align:center;padding:20px 0;">${S.geoCountry?'No companies match filter':'Select a country to preview'}</div>`;
-      const cntEl = document.getElementById('mtGeoCnt');
-      if(cntEl) cntEl.textContent = S.geoCountry&&fc.length ? fc.length+' compan'+(fc.length>1?'ies':'y')+' in '+S.geoCountry : '';
-    }
-
-    function refreshSummary() {
-      const el = document.getElementById('mtTrigSummary');
-      if(el) el.textContent = _mtSummary();
-    }
-
-    // ── MIXED-TYPE WARNING BANNER
-    function renderMixedWarning() {
-      const el = document.getElementById('mtMixedWarn'); if(!el) return;
-      const cos = getModeCompanies();
-      const arCos = cos.filter(c=>c.wbType==='AR_UPDATE');
-      const frCos = cos.filter(c=>c.wbType==='FRESH');
-      if(arCos.length && frCos.length) {
-        el.style.display='block';
-        el.innerHTML=`<div style="display:flex;gap:8px;align-items:flex-start;">
-          <span style="font-size:14px;flex-shrink:0;">⚠️</span>
+      panel.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
-            <div style="font-size:11px;font-weight:700;color:var(--amber);margin-bottom:3px;">Mixed update types selected</div>
-            <div style="font-size:10px;color:var(--txt2);line-height:1.5;">
-              <b style="color:var(--blue);">${arCos.length} AR Update</b> and <b style="color:var(--teal);">${frCos.length} Fresh</b> companies are selected together.
-              Each company will be processed using <b>its own type</b> from the workbench.
-              Only years in each company's <b>pending years</b> will be actioned — years already in Golden Copy are skipped automatically.
-            </div>
+            <label class="dl-lbl">Country Code</label>
+            <select class="dl-input" id="dlTCountry" onchange="dlOnCountryChange()" style="cursor:pointer;">
+              <option value="">— Select country —</option>
+              ${countryOptions}
+            </select>
+          </div>
+          <div>
+            <label class="dl-lbl">Ticker / Security</label>
+            <select class="dl-input" id="dlTTicker" disabled style="cursor:pointer;color:var(--txt3);">
+              <option value="">— Select country first —</option>
+            </select>
+          </div>
+          <div>
+            <label class="dl-lbl">From Year</label>
+            <input class="dl-input" id="dlTFrom" type="number" min="2017" max="${CURRENT_YEAR}" value="2017">
+          </div>
+          <div>
+            <label class="dl-lbl">To Year</label>
+            <input class="dl-input" id="dlTTo" type="number" min="2017" max="${CURRENT_YEAR}" value="${CURRENT_YEAR}">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="dl-btn-primary" id="dlTriggerBtn" onclick="dlTrigger()">Trigger Job</button>
+            <span id="dlTrigMsg" style="font-size:11px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
           </div>
         </div>`;
+    }
+  }
+
+  // ── Country change → repopulate ticker dropdown ──────────
+  window.dlOnCountryChange = function() {
+    const COUNTRY_ISO2 = {
+      'Australia':'AU','Canada':'CA','France':'FR','Germany':'DE',
+      'India':'IN','Japan':'JP','Switzerland':'CH','United Kingdom':'GB','United States':'US'
+    };
+    // Invert: ISO2 → full name
+    const ISO2_COUNTRY = Object.fromEntries(Object.entries(COUNTRY_ISO2).map(([k,v])=>[v,k]));
+    const countryCode = document.getElementById('dlTCountry')?.value || '';
+    const tickerSel   = document.getElementById('dlTTicker');
+    if (!tickerSel) return;
+    if (!countryCode) {
+      tickerSel.innerHTML = '<option value="">— Select country first —</option>';
+      tickerSel.disabled = true;
+      tickerSel.style.color = 'var(--txt3)';
+      return;
+    }
+    const fullName = ISO2_COUNTRY[countryCode] || '';
+    // Filter companies by country (match both full name and code)
+    const cos = COMPANIES.filter(c => {
+      if (!c.status || c.status !== 'Active') return false;
+      const cCode = COUNTRY_ISO2[c.country] || c.country.substring(0,2).toUpperCase();
+      return cCode === countryCode || c.country === fullName;
+    });
+    // Dedupe by ticker (prefer ones that have a ticker)
+    const seen = new Set();
+    const filtered = cos.filter(c => {
+      // Use ISIN as unique key; prefer ticker if available
+      if (seen.has(c.isin)) return false;
+      seen.add(c.isin);
+      return true;
+    });
+    if (!filtered.length) {
+      tickerSel.innerHTML = '<option value="">No securities found for this country</option>';
+      tickerSel.disabled = true;
+      tickerSel.style.color = 'var(--txt3)';
+      return;
+    }
+    filtered.sort((a,b) => (a.ticker||a.name).localeCompare(b.ticker||b.name));
+    tickerSel.innerHTML = '<option value="">— Select security —</option>' +
+      filtered.map(c => {
+        const label = c.ticker ? c.ticker + ' — ' + c.name : c.name;
+        const val   = c.ticker || c.isin;
+        return `<option value="${val}">${label}</option>`;
+      }).join('');
+    tickerSel.disabled = false;
+    tickerSel.style.color = 'var(--txt)';
+  };
+
+  // ── Trigger job ──────────────────────────────────────────
+  window.dlTrigger = async function() {
+    const btn = document.getElementById('dlTriggerBtn');
+    const msg = document.getElementById('dlTrigMsg');
+    if (!btn || !msg) return;
+    btn.disabled = true; btn.textContent = 'Queueing…';
+    msg.style.color = 'var(--txt3)'; msg.textContent = '';
+    try {
+      let res;
+      if (window._dlTab === 'bulk') {
+        const country = (document.getElementById('dlBCountry')?.value||'').trim().toUpperCase();
+        const from_year = parseInt(document.getElementById('dlBFrom')?.value||'2017');
+        const to_year   = parseInt(document.getElementById('dlBTo')?.value||String(CURRENT_YEAR));
+        const body = { from_year, to_year };
+        if (country) body.country_code = country;
+        res = await triggerBulk(body);
       } else {
-        el.style.display='none';
+        const ticker  = (document.getElementById('dlTTicker')?.value||'').trim().toUpperCase();
+        const country = (document.getElementById('dlTCountry')?.value||'').trim().toUpperCase();
+        const from_year = parseInt(document.getElementById('dlTFrom')?.value||'2017');
+        const to_year   = parseInt(document.getElementById('dlTTo')?.value||String(CURRENT_YEAR));
+        if (!country) {
+          msg.style.color='var(--red)'; msg.textContent='✕ Please select a country first.';
+          btn.disabled=false; btn.textContent='Trigger Job'; return;
+        }
+        if (!ticker) {
+          msg.style.color='var(--red)'; msg.textContent='✕ Please select a security / ticker.';
+          btn.disabled=false; btn.textContent='Trigger Job'; return;
+        }
+        res = await triggerTargeted({ ticker_region:ticker, country_code:country, from_year, to_year });
       }
+      msg.style.color='var(--green)';
+      msg.textContent='✓ Job queued — '+res.job_id.slice(0,8)+'…';
+      dlLoadJobs();
+    } catch(e) {
+      msg.style.color='var(--red)';
+      msg.textContent='✕ '+(e?.data?.error||JSON.stringify(e?.data)||'Request failed');
+    } finally {
+      btn.disabled=false; btn.textContent='Trigger Job';
+    }
+  };
+
+  // ── Load jobs ────────────────────────────────────────────
+  window.dlLoadJobs = async function() {
+    const refreshBtn = document.getElementById('dlRefreshBtn');
+    if (refreshBtn) { refreshBtn.disabled=true; refreshBtn.textContent='Loading…'; }
+    const from = document.getElementById('dlFromDate')?.value||'';
+    const to   = document.getElementById('dlToDate')?.value||'';
+    let jobs, isDemo = false;
+    try {
+      jobs = await fetchJobs(from, to);
+    } catch(_) {
+      jobs = DEMO_JOBS;
+      isDemo = true;
+    }
+    window._dlJobs = jobs;
+    const demoWarn = document.getElementById('dlDemoWarn');
+    if (demoWarn) demoWarn.style.display = isDemo ? 'inline-flex' : 'none';
+    dlUpdateStats(jobs);
+    dlRenderJobList(jobs);
+    if (refreshBtn) { refreshBtn.disabled=false; refreshBtn.textContent='↻ Refresh'; }
+    // Restart polling for any non-terminal open job
+    dlManagePolling();
+  };
+
+  function dlUpdateStats(jobs) {
+    const el = id => document.getElementById(id);
+    if (el('dlJobCount')) el('dlJobCount').textContent = jobs.length+' job'+(jobs.length!==1?'s':'');
+    if (el('dlStatRunning')) el('dlStatRunning').textContent = jobs.filter(j=>j.status==='running').length;
+    if (el('dlStatPending')) el('dlStatPending').textContent = jobs.filter(j=>j.status==='pending').length;
+    if (el('dlStatDone'))    el('dlStatDone').textContent    = jobs.filter(j=>j.status==='complete').length;
+    if (el('dlStatFailed'))  el('dlStatFailed').textContent  = jobs.filter(j=>j.status==='failed').length;
+  }
+
+  // ── Render job list ──────────────────────────────────────
+  function dlRenderJobList(jobs) {
+    const list = document.getElementById('dlJobList');
+    if (!list) return;
+    if (!jobs || !jobs.length) {
+      list.innerHTML='<div style="text-align:center;padding:48px;color:var(--txt3);font-size:13px;">No jobs found. Trigger a download above to get started.</div>';
+      return;
+    }
+    list.innerHTML = jobs.map(j => dlJobRowHTML(j)).join('');
+  }
+
+  function dlJobRowHTML(j) {
+    const sm = STATUS_META[j.status] || STATUS_META.pending;
+    const expanded = window._dlExpanded === j.job_id;
+    const p = calcProgress(j);
+    const isT = isTerminal(j.status);
+
+    // Progress / stats bar
+    let progressHTML;
+    if (!isT) {
+      // running always shows indeterminate (sweeping line), same as pending before total_expected is set
+      if (p === null || j.status === 'running') {
+        const label = j.status === 'running' && p !== null ? p+'%' : 'Analyzing…';
+        progressHTML = `<div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
+            <div style="width:40%;height:100%;border-radius:3px;background:var(--blue);animation:dl-indeterminate 1.4s ease-in-out infinite;"></div>
+          </div>
+          <span style="font-size:10px;color:var(--txt3);font-family:var(--mono);">${label}</span>
+        </div>`;
+      } else {
+        progressHTML = `<div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
+            <div style="width:${p}%;height:100%;border-radius:3px;background:${j.total_failed>0?'var(--amber)':'var(--blue)'};transition:width .4s ease;"></div>
+          </div>
+          <span style="font-size:10px;color:var(--txt2);font-family:var(--mono);min-width:28px;text-align:right;">${p}%</span>
+        </div>`;
+      }
+    } else {
+      progressHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="dl-pill" style="background:rgba(34,197,94,0.10);color:var(--green);"><b>${j.total_success}</b>&nbsp;ok</span>
+        <span class="dl-pill" style="${j.total_failed>0?'background:rgba(239,68,68,0.10);color:var(--red);':''}"><b>${j.total_failed}</b>&nbsp;fail</span>
+        <span class="dl-pill"><b>${j.total_skipped}</b>&nbsp;skip</span>
+        <span class="dl-pill"><b>${j.total_expected}</b>&nbsp;total</span>
+      </div>`;
     }
 
-    // ── YEAR CONFLICT HINT (shows what years are actually actionable vs skipped)
-    function renderYearHint() {
-      const el = document.getElementById('mtYearHint'); if(!el) return;
-      const cos = getModeCompanies();
-      if(!cos.length || !S.years.size) { el.style.display='none'; return; }
-      const userYears = [...S.years].sort();
-      let totalActionable = 0, totalSkipped = 0;
-      cos.forEach(c=>{
-        const {actionable, alreadyDone} = resolveYears(c, userYears);
-        totalActionable += actionable.length;
-        totalSkipped += alreadyDone.length;
-      });
-      if(totalSkipped > 0) {
-        el.style.display='block';
-        el.innerHTML=`<span style="font-size:10px;color:var(--amber);">⚠ ${totalSkipped} year×company slot${totalSkipped>1?'s':''} already in Golden Copy — will be skipped</span>`;
-      } else {
-        el.style.display='none';
-      }
+    // Type badge
+    const typeColor = j.job_type==='bulk' ? 'var(--blue)' : 'var(--purple)';
+    const typeBg    = j.job_type==='bulk' ? 'var(--blue-bg)' : 'var(--purple-bg)';
+    const typeBd    = j.job_type==='bulk' ? 'var(--blue-bd)' : 'var(--purple-bd)';
+
+    // Log rows (only when expanded)
+    let logHTML = '';
+    if (expanded) {
+      const logs = j.logs || [];
+      const logsBody = logs.length ? logs.map(log => {
+        const lc = LEVEL_COLORS[log.level] || LEVEL_COLORS.INFO;
+        const icon = EVENT_ICONS[log.event_type] || '·';
+        const detailStr = log.details ? JSON.stringify(log.details, null, 2) : '';
+        return `<div style="display:grid;grid-template-columns:28px 52px 130px 1fr 50px 140px;align-items:center;gap:6px;padding:5px 12px;border-bottom:1px solid var(--border);font-size:11px;font-family:var(--mono);background:var(--bg1);">
+          <span style="color:var(--txt3);text-align:center;">${icon}</span>
+          <span style="padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:${lc.bg};color:${lc.fg};text-align:center;">${log.level}</span>
+          <span style="color:var(--txt2);font-size:10px;">${log.event_type}</span>
+          <span style="color:var(--txt3);">${detailStr ? `<details style="cursor:pointer;"><summary style="color:var(--blue);font-size:10px;list-style:none;">view details</summary><pre style="margin-top:4px;white-space:pre-wrap;word-break:break-all;font-size:9px;color:var(--txt2);background:var(--bg2);padding:6px;border-radius:4px;">${detailStr.replace(/</g,'&lt;')}</pre></details>` : '<span style="color:var(--txt4);">—</span>'}</span>
+          <span style="color:var(--txt3);text-align:center;">${log.fiscal_year||'—'}</span>
+          <span style="color:var(--txt3);font-size:9px;">${fmtDate(log.created_at)}</span>
+        </div>`;
+      }).join('') : `<div style="padding:16px;text-align:center;font-size:11px;color:var(--txt3);font-style:italic;">No logs recorded yet</div>`;
+
+      logHTML = `
+        <div style="border-top:1px solid var(--border);">
+          <!-- Meta row -->
+          <div style="display:flex;gap:16px;padding:8px 14px;font-size:10px;color:var(--txt3);font-family:var(--mono);background:var(--bg2);flex-wrap:wrap;border-bottom:1px solid var(--border);">
+            <span>Created by: <b style="color:var(--txt2);">${j.created_by||'—'}</b></span>
+            <span>Updated: <b style="color:var(--txt2);">${fmtDate(j.updated_at)}</b></span>
+            <span>Completed: <b style="color:var(--txt2);">${fmtDate(j.completed_at)}</b></span>
+            ${!isT?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--blue);font-size:9px;"><span style="animation:dl-pulse 1.2s infinite;">●</span> polling every 5s</span>`:''}
+          </div>
+          ${!isT?`<div style="display:flex;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);">
+            <span class="dl-pill"><b>${j.total_expected}</b>&nbsp;expected</span>
+            <span class="dl-pill" style="background:rgba(34,197,94,0.10);color:var(--green);"><b>${j.total_success}</b>&nbsp;success</span>
+            <span class="dl-pill" style="${j.total_failed>0?'background:rgba(239,68,68,0.10);color:var(--red);':''}"><b>${j.total_failed}</b>&nbsp;failed</span>
+            <span class="dl-pill"><b>${j.total_skipped}</b>&nbsp;skipped</span>
+          </div>`:''}
+          <!-- Log header -->
+          <div style="display:grid;grid-template-columns:28px 52px 130px 1fr 50px 140px;gap:6px;padding:6px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt3);background:var(--bg2);">
+            <span></span><span>Level</span><span>Event</span><span>Details</span><span style="text-align:center;">FY</span><span>Timestamp</span>
+          </div>
+          ${logsBody}
+        </div>`;
     }
 
-    // ── HTML
-    tc.innerHTML = `
-    <div style="display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden;">
-
-      <!-- LEFT PANEL: CONFIGURATION -->
-      <div style="background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:14px 16px 10px;border-bottom:1px solid var(--border);flex-shrink:0;overflow-y:auto;flex:1;">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);margin-bottom:10px;">Trigger Configuration</div>
-
-          <!-- Mode selector -->
-          <div style="display:flex;gap:4px;margin-bottom:12px;">
-            ${[['bulk','⬜ Bulk'],['single','◉ Single'],['geo','🌍 Geography']].map(([m,l])=>`
-            <button id="mtMode_${m}" onclick="mtSetMode('${m}')"
-              style="flex:1;padding:6px 4px;border-radius:6px;border:1px solid var(--border2);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;transition:all .2s;background:${S.mode===m?'var(--blue-bg)':'var(--bg3)'};color:${S.mode===m?'var(--blue)':'var(--txt3)'};border-color:${S.mode===m?'var(--blue-bd)':'var(--border2)'};">${l}</button>`).join('')}
-          </div>
-
-          <!-- Type filter — always visible, filters what appears in ALL modes -->
-          <div style="margin-bottom:12px;">
-            <div style="font-size:11px;color:var(--txt2);margin-bottom:5px;font-weight:600;">Filter by Update Type</div>
-            <div style="display:flex;gap:5px;">
-              ${[['ALL','All Types','var(--txt2)','var(--bg3)','var(--border2)'],['AR_UPDATE','📋 AR Update','var(--blue)','var(--blue-bg)','var(--blue-bd)'],['FRESH','🆕 Fresh','var(--teal)','var(--teal-bg)','var(--teal-bd)']].map(([v,l,col,bg,bd])=>`
-              <button id="mtTF_${v}" onclick="mtSetTypeFilter('${v}')"
-                style="flex:1;padding:5px 4px;border-radius:6px;border:1px solid ${S.typeFilter===v?bd:'var(--border2)'};font-family:var(--font);font-size:9px;font-weight:700;cursor:pointer;transition:all .2s;background:${S.typeFilter===v?bg:'var(--bg3)'};color:${S.typeFilter===v?col:'var(--txt3)'};">${l}</button>`).join('')}
-            </div>
-          </div>
-
-          <!-- Mixed-type warning -->
-          <div id="mtMixedWarn" style="display:none;background:var(--amber-bg);border:1px solid var(--amber-bd);border-radius:8px;padding:8px 10px;margin-bottom:10px;"></div>
-
-          <!-- Mode panels -->
-          <div id="mtPanelBulk" style="display:${S.mode==='bulk'?'block':'none'};">
-            <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Select securities for bulk trigger:</div>
-            <div style="display:flex;gap:6px;margin-bottom:8px;">
-              <button onclick="mtSelectAll(true)" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--txt2);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;">Select All</button>
-              <button onclick="mtSelectAll(false)" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--txt2);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;">Clear</button>
-            </div>
-            <div id="mtBulkList" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-bottom:4px;"></div>
-            <div id="mtBulkCount" style="font-size:10px;color:var(--txt3);text-align:right;">0 selected</div>
-          </div>
-
-          <div id="mtPanelSingle" style="display:${S.mode==='single'?'block':'none'};">
-            <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Select one security:</div>
-            <select id="mtSingleSel" onchange="mtSetSingle(this.value)"
-              style="width:100%;padding:7px 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--txt2);font-size:11px;font-family:var(--font);">
-              <option value="">— choose company —</option>
-              ${filteredCos().map(c=>`<option value="${c.id}" ${S.singleId===c.id?'selected':''}>${c.name} · ${c.wbType==='FRESH'?'Fresh':'AR Upd'} · ${c.country}</option>`).join('')}
-            </select>
-            <div id="mtSingleDetail"></div>
-          </div>
-
-          <div id="mtPanelGeo" style="display:${S.mode==='geo'?'block':'none'};">
-            <div style="font-size:11px;color:var(--txt3);margin-bottom:6px;">Select country / geography:</div>
-            <select id="mtGeoSel" onchange="mtSetGeo(this.value)"
-              style="width:100%;padding:7px 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--txt2);font-size:11px;font-family:var(--font);margin-bottom:8px;">
-              <option value="">— choose country —</option>
-              ${countries.map(c=>`<option value="${c}" ${S.geoCountry===c?'selected':''}>${c}</option>`).join('')}
-            </select>
-            <div id="mtGeoList" style="max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;"></div>
-            <div id="mtGeoCnt" style="font-size:10px;color:var(--txt3);margin-top:4px;text-align:right;"></div>
-          </div>
-        </div>
-
-        <!-- BATCH + YEARS -->
-        <div style="padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;">
-
-          <!-- Batch size -->
-          <div style="margin-bottom:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-              <span style="font-size:11px;color:var(--txt2);font-weight:600;">Batch Size</span>
-              <span id="mtBatchVal" class="mono" style="font-size:11px;color:var(--blue);font-weight:700;">${S.batchSize}</span>
-            </div>
-            <input type="range" id="mtBatchSlider" min="1" max="20" value="${S.batchSize}"
-              oninput="mtSetBatch(this.value)"
-              style="width:100%;accent-color:var(--blue);cursor:pointer;">
-            <div style="display:flex;justify-content:space-between;margin-top:2px;">
-              <span style="font-size:9px;color:var(--txt4);">1</span>
-              <span style="font-size:9px;color:var(--txt4);">20</span>
-            </div>
-          </div>
-
-          <!-- Year selection -->
-          <div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <span style="font-size:11px;color:var(--txt2);font-weight:600;">Financial Years</span>
-              <span id="mtYrCount" style="font-size:10px;color:var(--txt3);">${S.years.size} yr${S.years.size!==1?'s':''}</span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;">
-              ${availYears.map(y=>`
-              <button id="mtYr_${y}" onclick="mtToggleYear(${y})"
-                style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;background:${S.years.has(y)?'var(--teal-bg)':'var(--bg3)'};color:${S.years.has(y)?'var(--teal)':'var(--txt3)'};border-color:${S.years.has(y)?'var(--teal-bd)':'var(--border2)'};">${y}</button>`).join('')}
-            </div>
-            <div id="mtYearHint" style="margin-top:5px;display:none;"></div>
-          </div>
-        </div>
-
-        <!-- TRIGGER BUTTON -->
-        <div style="padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;">
-          <button id="mtBtnTrigger" onclick="mtTrigger()"
-            style="width:100%;padding:11px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;">
-            <span>🚀</span><span id="mtBtnLabel">Trigger Pipeline</span>
-          </button>
-          <div id="mtTrigSummary" style="font-size:10px;color:var(--txt3);text-align:center;margin-top:6px;"></div>
-        </div>
+    return `<div id="dlJob_${j.job_id}" style="border-radius:6px;border:1px solid ${expanded?'var(--blue-bd)':'var(--border)'};background:var(--bg1);margin-bottom:6px;overflow:hidden;transition:border-color .2s;">
+      <div onclick="dlToggleJob('${j.job_id}')"
+        style="display:grid;grid-template-columns:170px 65px 90px 55px 1fr 130px 110px;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;"
+        onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--txt2);">${j.job_id.slice(0,8)}…</span>
+        <span style="font-size:9px;font-weight:700;text-transform:uppercase;color:${typeColor};background:${typeBg};border:1px solid ${typeBd};padding:2px 6px;border-radius:3px;font-family:var(--mono);letter-spacing:.04em;">${j.job_type}</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;font-family:var(--mono);background:${sm.bg};color:${sm.fg};"><span style="font-size:9px;">${sm.icon}</span>${j.status}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--txt2);text-align:center;">${j.country_code||'ALL'}</span>
+        <div style="padding-right:8px;">${progressHTML}</div>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--txt3);">${fmtDate(j.created_at)}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:${expanded?'var(--blue)':'var(--txt3)'};text-align:right;">${expanded?'▲ collapse':'▼ expand'}</span>
       </div>
-
-      <!-- RIGHT PANEL: PIPELINE + LOG -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--bg);">
-
-        <!-- Stats bar -->
-        <div style="display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
-          ${[['mtSQueued','Queued','var(--blue)'],['mtSRunning','Running','var(--teal)'],['mtSDone','Completed','var(--green)'],['mtSSkipped','Skipped','var(--txt3)']].map(([id,l,col])=>`
-          <div style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center;">
-            <div id="${id}" class="mono" style="font-size:18px;font-weight:700;color:${col};">0</div>
-            <div style="font-size:9px;color:var(--txt3);margin-top:2px;text-transform:uppercase;letter-spacing:.4px;">${l}</div>
-          </div>`).join('')}
-          <div style="flex:2;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:10px;">
-            <div style="flex:1;">
-              <div style="font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Overall Progress</div>
-              <div style="height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;">
-                <div id="mtOverallBar" style="height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));width:0%;transition:width .5s;border-radius:3px;"></div>
-              </div>
-            </div>
-            <div id="mtOverallPct" class="mono" style="font-size:16px;font-weight:700;color:var(--blue);">0%</div>
-          </div>
-        </div>
-
-        <!-- Queue list + Pipeline -->
-        <div style="flex:1;display:grid;grid-template-rows:1fr 1fr;overflow:hidden;gap:0;">
-
-          <!-- Queue / active items -->
-          <div style="overflow:hidden;display:flex;flex-direction:column;border-bottom:1px solid var(--border);">
-            <div style="padding:10px 20px 8px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);">Processing Queue</span>
-              <span id="mtQueueInfo" class="mono" style="font-size:10px;color:var(--txt3);">Idle</span>
-            </div>
-            <div id="mtQueue" style="flex:1;overflow-y:auto;padding:0 20px 8px;display:flex;flex-direction:column;gap:4px;">
-              <div class="mt-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:80px;color:var(--txt4);font-size:11px;gap:6px;">
-                <div style="font-size:20px;opacity:.4;">📋</div>
-                <div>Configure trigger settings and click "Trigger Pipeline"</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Live log -->
-          <div style="overflow:hidden;display:flex;flex-direction:column;">
-            <div style="padding:10px 20px 8px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-top:1px solid var(--border);">
-              <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);">Activity Log</span>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span id="mtLogCount" class="mono" style="font-size:10px;color:var(--txt3);">0 events</span>
-                <button onclick="document.getElementById('mtLog').innerHTML='';window._mtState.logN=0;document.getElementById('mtLogCount').textContent='0 events';"
-                  style="padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--txt3);font-size:9px;font-family:var(--font);cursor:pointer;">Clear</button>
-              </div>
-            </div>
-            <div id="mtLog" style="flex:1;overflow-y:auto;padding:4px 20px 8px;display:flex;flex-direction:column;gap:1px;"></div>
-          </div>
-        </div>
-      </div>
+      ${logHTML}
     </div>`;
+  }
 
-    // Initial renders
-    renderBulkList();
-    renderGeoList();
-    refreshYearsForSelection();
-    renderMixedWarning();
-    renderYearHint();
-
-    // ── Restore single detail if singleId set
-    if(S.singleId) {
-      const co = filteredCos().find(c=>c.id===S.singleId);
-      if(co) _renderSingleDetail(co);
+  // ── Toggle expand ────────────────────────────────────────
+  window.dlToggleJob = function(jobId) {
+    if (window._dlExpanded === jobId) {
+      window._dlExpanded = null;
+    } else {
+      window._dlExpanded = jobId;
     }
+    dlRenderJobList(window._dlJobs || []);
+    dlManagePolling();
+  };
 
-    // ── Log helper
-    function mtLog(tag, msg, tagClass) {
-      S.logN++;
-      const lc = document.getElementById('mtLogCount');
-      if(lc) lc.textContent = S.logN + ' events';
-      const area = document.getElementById('mtLog'); if(!area) return;
-      const n = new Date();
-      const ts = String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
-      const tagColors={trig:'var(--blue)',batch:'var(--purple)',ai:'var(--teal)',qc:'var(--amber)',gc:'var(--green)',err:'var(--red)',skip:'var(--txt3)'};
-      const tagBgs={trig:'var(--blue-bg)',batch:'var(--purple-bg)',ai:'var(--teal-bg)',qc:'var(--amber-bg)',gc:'var(--green-bg)',err:'var(--red-bg)',skip:'var(--bg4)'};
-      const line = document.createElement('div');
-      line.style.cssText = 'display:flex;gap:6px;align-items:baseline;padding:1px 0;';
-      line.innerHTML = `<span class="mono" style="font-size:9px;color:var(--txt3);flex-shrink:0;">${ts}</span><span class="mono" style="font-size:9px;padding:0 5px;border-radius:3px;font-weight:700;background:${tagBgs[tagClass]||'var(--bg3)'};color:${tagColors[tagClass]||'var(--txt3)'};flex-shrink:0;">${tag}</span><span class="mono" style="font-size:10px;color:var(--txt2);">${esc(msg)}</span>`;
-      area.appendChild(line);
-      area.scrollTop = area.scrollHeight;
-    }
-
-    function mtSetStat(id, val) {
-      const el = document.getElementById(id); if(el) el.textContent = val;
-    }
-
-    function mtUpdateProgress(done, total) {
-      const pct = total ? Math.round((done/total)*100) : 0;
-      const bar = document.getElementById('mtOverallBar');
-      const pctEl = document.getElementById('mtOverallPct');
-      if(bar) bar.style.width = pct + '%';
-      if(pctEl) pctEl.textContent = pct + '%';
-    }
-
-    function mtAddQueueCard(co, actionableYrs, skippedYrs, batchIdx) {
-      const area = document.getElementById('mtQueue'); if(!area) return null;
-      if(area.querySelector('.mt-placeholder')) area.innerHTML = '';
-      const id = 'mtqc_'+co.id+'_'+batchIdx;
-      const existing = document.getElementById(id); if(existing) return existing;
-      const card = document.createElement('div');
-      card.id = id;
-      const typeCol = co.wbType==='FRESH' ? 'var(--teal)' : 'var(--blue)';
-      const skipNote = skippedYrs.length ? `<span style="font-size:9px;color:var(--txt3);margin-left:4px;">· ${skippedYrs.length} yr${skippedYrs.length>1?'s':''} skipped (in GC)</span>` : '';
-      card.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:10px;transition:all .2s;flex-shrink:0;';
-      card.innerHTML = `
-        <div style="width:8px;height:8px;border-radius:50%;background:var(--txt4);flex-shrink:0;" id="${id}_dot"></div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-            <span style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${co.name}</span>
-            ${typeChip(co.wbType)}
-          </div>
-          <div class="mono" style="font-size:9px;color:var(--txt3);">
-            ${co.isin} · ${co.country} · Batch #${batchIdx+1}
-            ${actionableYrs.length ? '· <span style="color:'+typeCol+'">'+actionableYrs.join(', ')+'</span>' : '<span style="color:var(--red)">no actionable years</span>'}
-            ${skipNote}
-          </div>
-        </div>
-        <span id="${id}_status" style="font-size:9px;font-weight:700;color:var(--txt3);white-space:nowrap;">${actionableYrs.length?'queued':'⊘ skip'}</span>`;
-      area.appendChild(card);
-      return card;
-    }
-
-    function mtUpdateCard(co, batchIdx, status, color, dotColor) {
-      const id = 'mtqc_'+co.id+'_'+batchIdx;
-      const card = document.getElementById(id); if(!card) return;
-      const dot = document.getElementById(id+'_dot');
-      const st = document.getElementById(id+'_status');
-      if(dot) dot.style.background = dotColor;
-      if(st) { st.textContent = status; st.style.color = color; }
-      if(status==='⟳ processing') { card.style.borderColor='rgba(0,229,200,0.3)'; card.style.background='rgba(0,229,200,0.04)'; }
-      if(status==='✓ done') { card.style.borderColor='rgba(0,240,122,0.25)'; card.style.background=''; }
-      if(status==='⊘ skipped') { card.style.opacity='0.45'; }
-    }
-
-    // ── Event handlers
-
-    window.mtSetMode = function(mode) {
-      S.mode = mode;
-      ['bulk','single','geo'].forEach(m=>{
-        const btn = document.getElementById('mtMode_'+m);
-        const panel = document.getElementById('mtPanel'+m.charAt(0).toUpperCase()+m.slice(1));
-        if(btn){
-          btn.style.background = m===mode?'var(--blue-bg)':'var(--bg3)';
-          btn.style.color = m===mode?'var(--blue)':'var(--txt3)';
-          btn.style.borderColor = m===mode?'var(--blue-bd)':'var(--border2)';
+  // ── Polling management ───────────────────────────────────
+  function dlManagePolling() {
+    // Clear all existing timers
+    Object.keys(window._dlPollTimers).forEach(id => {
+      clearInterval(window._dlPollTimers[id]);
+      delete window._dlPollTimers[id];
+    });
+    // Start polling for the expanded non-terminal job
+    const exp = window._dlExpanded;
+    if (!exp || !window._dlJobs) return;
+    const job = window._dlJobs.find(j=>j.job_id===exp);
+    if (!job || isTerminal(job.status)) return;
+    window._dlPollTimers[exp] = setInterval(async () => {
+      try {
+        const updated = await fetchJob(exp);
+        window._dlJobs = window._dlJobs.map(j => j.job_id===updated.job_id ? updated : j);
+        dlUpdateStats(window._dlJobs);
+        dlRenderJobList(window._dlJobs);
+        if (isTerminal(updated.status)) {
+          clearInterval(window._dlPollTimers[exp]);
+          delete window._dlPollTimers[exp];
         }
-        if(panel) panel.style.display = m===mode?'block':'none';
-      });
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
+      } catch(_) {}
+    }, POLL_INTERVAL);
+  }
 
-    window.mtSetTypeFilter = function(tf) {
-      S.typeFilter = tf;
-      [['ALL','var(--txt2)','var(--bg3)','var(--border2)'],['AR_UPDATE','var(--blue)','var(--blue-bg)','var(--blue-bd)'],['FRESH','var(--teal)','var(--teal-bg)','var(--teal-bd)']].forEach(([v,col,bg,bd])=>{
-        const btn = document.getElementById('mtTF_'+v); if(!btn) return;
-        const on = v===tf;
-        btn.style.background = on?bg:'var(--bg3)';
-        btn.style.color = on?col:'var(--txt3)';
-        btn.style.borderColor = on?bd:'var(--border2)';
-      });
-      // Re-render lists with new filter
-      renderBulkList();
-      renderGeoList();
-      // Rebuild single dropdown
-      const sel = document.getElementById('mtSingleSel');
-      if(sel) {
-        const cur = sel.value;
-        sel.innerHTML = '<option value="">— choose company —</option>' + filteredCos().map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${c.name} · ${c.wbType==='FRESH'?'Fresh':'AR Upd'} · ${c.country}</option>`).join('');
-      }
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
+  // ── Init ─────────────────────────────────────────────────
+  window._dlJobs = null;
+  window._dlExpanded = null;
+  // Clear any old poll timers from previous visit
+  if (window._dlPollTimers) {
+    Object.values(window._dlPollTimers).forEach(t => clearInterval(t));
+  }
+  window._dlPollTimers = {};
 
-    window.mtToggleBulk = function(id, checked) {
-      if(checked) S.bulkSelected.add(id); else S.bulkSelected.delete(id);
-      const selCount = filteredCos().filter(c=>S.bulkSelected.has(c.id)).length;
-      const bc = document.getElementById('mtBulkCount');
-      if(bc) bc.textContent = selCount + ' selected';
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
-
-    window.mtSelectAll = function(sel) {
-      filteredCos().forEach(c=>{
-        const chk = document.getElementById('mtChk_'+c.id);
-        if(chk) chk.checked = sel;
-        if(sel) S.bulkSelected.add(c.id); else S.bulkSelected.delete(c.id);
-      });
-      const bc = document.getElementById('mtBulkCount');
-      if(bc) bc.textContent = (sel?filteredCos().length:0) + ' selected';
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
-
-    function _renderSingleDetail(co) {
-      const panel = document.getElementById('mtSingleDetail'); if(!panel) return;
-      panel.innerHTML = co ? `<div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="font-size:12px;font-weight:700;">${co.name}</span>
-          ${typeChip(co.wbType)}
-        </div>
-        <div class="mono" style="font-size:10px;color:var(--txt3);margin-bottom:2px;">${co.isin} · ${co.exchange}</div>
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:5px;">${co.country} · FY: ${co.fyEnd}</div>
-        <div style="font-size:10px;color:var(--txt2);">
-          <span style="color:var(--green);">✓ GC years:</span> ${co.yearsGC.length?co.yearsGC.join(', '):'none'}
-        </div>
-        <div style="font-size:10px;color:var(--txt2);margin-top:2px;">
-          <span style="color:var(--blue);">⏳ Pending:</span> ${co.pendingYears.length?co.pendingYears.join(', '):'none'}
-        </div>
-      </div>` : '';
-    }
-
-    window.mtSetSingle = function(id) {
-      S.singleId = id || null;
-      const co = enriched.find(c=>c.id===id);
-      _renderSingleDetail(co||null);
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
-
-    window.mtSetGeo = function(country) {
-      S.geoCountry = country;
-      renderGeoList();
-      refreshYearsForSelection();
-      renderMixedWarning();
-      renderYearHint();
-    };
-
-    window.mtSetBatch = function(val) {
-      S.batchSize = parseInt(val);
-      const bv = document.getElementById('mtBatchVal');
-      if(bv) bv.textContent = S.batchSize;
-      refreshSummary();
-    };
-
-    window.mtToggleYear = function(yr) {
-      if(S.years.has(yr)) S.years.delete(yr); else S.years.add(yr);
-      const btn = document.getElementById('mtYr_'+yr);
-      const on = S.years.has(yr);
-      if(btn){
-        btn.style.background = on?'var(--teal-bg)':'var(--bg3)';
-        btn.style.color = on?'var(--teal)':'var(--txt3)';
-        btn.style.borderColor = on?'var(--teal-bd)':'var(--border2)';
-      }
-      const yc = document.getElementById('mtYrCount');
-      if(yc) yc.textContent = S.years.size+' yr'+(S.years.size!==1?'s':'');
-      refreshSummary();
-      renderYearHint();
-    };
-
-    // ── Main trigger
-    window.mtTrigger = async function() {
-      if(S.running) return;
-
-      const cos = getModeCompanies();
-      if(!cos.length){ mtLog('ERR','No securities selected','err'); return; }
-      if(!S.years.size){ mtLog('ERR','No years selected','err'); return; }
-
-      const userYears = [...S.years].sort();
-
-      // Build per-company jobs: each has actionable years (in pendingYears) + skipped (already in GC)
-      const jobs = cos.map(co=>{
-        const {actionable, alreadyDone, notInScope} = resolveYears(co, userYears);
-        return { co, actionable, alreadyDone, notInScope };
-      });
-
-      // Warn if any company has zero actionable years
-      const noAction = jobs.filter(j=>j.actionable.length===0);
-      const hasAction = jobs.filter(j=>j.actionable.length>0);
-
-      const batchSize = S.batchSize;
-      // Only batch companies with actionable work
-      const batches = [];
-      for(let i=0;i<hasAction.length;i+=batchSize) batches.push(hasAction.slice(i,i+batchSize));
-
-      const total = cos.length;
-      const totalActionable = hasAction.length;
-      let done = 0, skipped = 0;
-
-      S.running = true;
-      const btn = document.getElementById('mtBtnTrigger');
-      const btnLabel = document.getElementById('mtBtnLabel');
-      if(btn) { btn.style.background='var(--bg4)'; btn.style.cursor='not-allowed'; }
-      if(btnLabel) btnLabel.textContent = '⟳ Running...';
-
-      const qEl = document.getElementById('mtQueue');
-      if(qEl) qEl.innerHTML = '';
-
-      mtSetStat('mtSQueued', totalActionable);
-      mtSetStat('mtSRunning', 0);
-      mtSetStat('mtSDone', 0);
-      mtSetStat('mtSSkipped', noAction.length);
-      mtUpdateProgress(0, totalActionable || 1);
-
-      const arCount = cos.filter(c=>c.wbType==='AR_UPDATE').length;
-      const frCount = cos.filter(c=>c.wbType==='FRESH').length;
-      const typeBreakdown = arCount&&frCount ? `${arCount} AR Update + ${frCount} Fresh` : arCount ? `${arCount} AR Update` : `${frCount} Fresh`;
-      mtLog('TRIG', `Manual trigger: ${total} securit${total>1?'ies':'y'} (${typeBreakdown}) · years: ${userYears.join(', ')} · ${batches.length} batch${batches.length>1?'es':''}`, 'trig');
-
-      // Add skipped companies to queue immediately
-      noAction.forEach((j,i)=>{
-        mtAddQueueCard(j.co, [], j.alreadyDone, 0);
-        mtUpdateCard(j.co, 0, '⊘ skipped', 'var(--txt3)', 'var(--txt4)');
-        mtLog('SKIP', `[${j.co.name}] All selected years already in Golden Copy — skipped`, 'skip');
-        skipped++;
-      });
-
-      const qInfoEl = document.getElementById('mtQueueInfo');
-      const delay = ms => new Promise(r=>setTimeout(r,ms));
-      const BASE = 900;
-
-      if(!batches.length) {
-        if(qInfoEl) qInfoEl.textContent = `Complete — 0 processed, ${skipped} skipped`;
-        mtLog('GC', `No actionable work — all selected years already in Golden Copy`, 'skip');
-        S.running = false;
-        if(btn) { btn.style.background='var(--blue)'; btn.style.cursor='pointer'; }
-        if(btnLabel) btnLabel.textContent = '🚀 Trigger Again';
-        return;
-      }
-
-      for(let bi=0;bi<batches.length;bi++) {
-        const batch = batches[bi];
-        if(qInfoEl) qInfoEl.textContent = `Batch ${bi+1}/${batches.length} · ${batch.length} items`;
-        mtLog('BATCH', `Starting batch ${bi+1}/${batches.length} (${batch.length} companies)`, 'batch');
-
-        batch.forEach(j => mtAddQueueCard(j.co, j.actionable, j.alreadyDone, bi));
-        mtSetStat('mtSRunning', batch.length);
-
-        for(let ci=0;ci<batch.length;ci++) {
-          const {co, actionable, alreadyDone} = batch[ci];
-          mtUpdateCard(co, bi, '⟳ processing', 'var(--teal)', 'var(--teal)');
-
-          const yrsLabel = actionable.join(', ');
-
-          // Log skipped years for this company if any
-          if(alreadyDone.length) {
-            mtLog('SKIP', `[${co.name}] Years already in GC, skipping: ${alreadyDone.join(', ')}`, 'skip');
-          }
-
-          mtLog('INGEST', `[${co.name}] (${co.wbType}) Fetching report · years: ${yrsLabel}`, 'batch');
-          await delay(BASE * 0.6);
-
-          mtLog('AI', `[${co.name}] Gemini AI classifying ${actionable.length} year${actionable.length>1?'s':''}...`, 'ai');
-          await delay(BASE * 0.8);
-
-          const conf = 75 + Math.floor(Math.random()*24);
-          const pass = conf >= 85;
-          mtLog('QC', `[${co.name}] QC ${pass?'PASSED':'FLAGGED'} · ${conf}% confidence`, pass?'gc':'qc');
-          await delay(BASE * 0.4);
-
-          if(pass) {
-            mtLog('GC', `[${co.name}] Written to Golden Copy · ${yrsLabel} · ${co.wbType}`, 'gc');
-            mtUpdateCard(co, bi, '✓ done', 'var(--green)', 'var(--green)');
-          } else {
-            mtLog('QC', `[${co.name}] Routed to analyst review queue`, 'qc');
-            mtUpdateCard(co, bi, '⚑ review', 'var(--amber)', 'var(--amber)');
-          }
-          done++;
-          mtSetStat('mtSDone', done);
-          mtSetStat('mtSRunning', batch.length - ci - 1);
-          mtUpdateProgress(done, totalActionable);
-          await delay(BASE * 0.3);
-        }
-
-        mtLog('BATCH', `Batch ${bi+1} complete — ${batch.length} processed`, 'batch');
-        if(bi < batches.length - 1) {
-          await delay(BASE * 0.7);
-        }
-      }
-
-      mtSetStat('mtSRunning', 0);
-      mtSetStat('mtSSkipped', skipped);
-      if(qInfoEl) qInfoEl.textContent = `Complete — ${done} processed, ${skipped} skipped`;
-      mtLog('GC', `Manual trigger complete · ${done} processed · ${skipped} skipped · types: ${typeBreakdown}`, 'gc');
-
-      S.running = false;
-      if(btn) { btn.style.background='var(--blue)'; btn.style.cursor='pointer'; }
-      if(btnLabel) btnLabel.textContent = '🚀 Trigger Again';
-    };
-
-  } // end renderAtManual
-
-
-  // Initial render
-  atSwitchTab(window._atTab);
+  dlSwitchTab(window._dlTab);
+  dlLoadJobs();
 }
 
 
