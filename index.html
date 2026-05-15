@@ -734,7 +734,6 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
       </div>
       <div class="sb-group" onclick="sbToggle('sec-ca')"><span>Corp. Actions</span><span class="sb-group-arrow">▼</span></div>
       <div class="sb-section" id="sec-ca" style="max-height:200px">
-        <div class="nav-item" data-page="ca" onclick="nav('ca')">CA Handling</div>
         <div class="nav-item" data-page="ca-gc" onclick="nav('ca-gc')">CA Golden Copy</div>
       </div>
       <div class="sb-group" onclick="sbToggle('sec-reports')"><span>Reports</span><span class="sb-group-arrow">▼</span></div>
@@ -1434,27 +1433,78 @@ const CLSDATA = {
 
 // ── CORPORATE ACTIONS ─────────────────────────────────────
 let CORP_ACTIONS = [
-  {id:'CA001',coId:'C003',coName:'Apple Inc',type:'Identifier Change',date:'2023-10-15',
+  // ── Linked to GC entries (CAdmin Golden Copy companies) ──────────────────
+  {id:'CA001',coId:'CSV016',coName:'Apple Inc',isin:'US0378331005',type:'Identifier Change',effectiveDate:'2023-10-15',
+   desc:'SEDOL updated from 2046251 to 2046252 following ADR restructuring. MIC remains XNAS.',
+   status:'Processed',oldVal:'SEDOL: 2046251',newVal:'SEDOL: 2046252',source:'cadmin',ref:'CADM-2023-1089',
+   implStatus:'Pending'},
+  {id:'CA002',coId:'CSV010',coName:'Alphabet Inc',isin:'US02079K3059',type:'Name Change',effectiveDate:'2023-12-01',
+   desc:'Subsidiary Google DeepMind rebranded from Google Brain + DeepMind merger. Parent Alphabet Inc name unchanged. Ticker GOOGL unaffected.',
+   status:'Processed',oldVal:'Google Brain / DeepMind (subsidiaries)',newVal:'Google DeepMind (merged subsidiary)',source:'cadmin',ref:'CADM-2023-1134',
+   implStatus:'Applied'},
+  {id:'CA003',coId:'CSV030',coName:'Mitsubishi UFJ Financial Group Inc',isin:'JP3902900004',type:'Spin-off / Demerger',effectiveDate:'2023-04-03',
+   desc:'MUFG spun off its asset management division as MU Investments Co., Ltd. Spun-off entity to be added as new universe entry. Classification re-review required for FY2023+.',
+   status:'Processed',oldVal:'MUFG Consolidated (Asset Mgmt included)',newVal:'MUFG (ex-AM) + MU Investments Co. (new entity)',source:'cadmin',ref:'CADM-2023-0887',
+   spinoffEntity:'MU Investments Co., Ltd.',spinoffIsin:'JP3999999001',implStatus:'Pending'},
+  {id:'CA004',coId:'CSV029',coName:'Meta Platforms Inc',isin:'US30303M1027',type:'Acquisition',effectiveDate:'2024-08-12',
+   desc:'Meta Platforms Inc. acquired Neural Magic Inc., an AI model-optimization startup. Deal value ~$500M. Revenue contribution expected from FY2025 onwards.',
+   status:'Processed',source:'cadmin',ref:'CADM-2024-0312',
+   acquirerCoId:'CSV029',acquirerName:'Meta Platforms Inc',acquirerIsin:'US30303M1027',acquirerSector:'Communication Services',acquirerClassification:'Pure Play',
+   targetName:'Neural Magic Inc',targetIsin:'US-PRIVATE-NM001',targetSector:'Information Technology',targetClassification:'Pure Play',targetDesc:'AI model optimization and inference acceleration',
+   implStatus:'Pending'},
+  {id:'CA005',coId:'CSV001',coName:'360 ONE WAM Ltd',isin:'INE466L01038',type:'Name Change',effectiveDate:'2022-11-15',
+   desc:'Company changed its legal name from IIFL Wealth Management Ltd to 360 ONE WAM Ltd. Ticker changed from IIFLWAM to 360ONE on NSE/BSE.',
+   status:'Processed',oldVal:'IIFL Wealth Management Ltd · IIFLWAM',newVal:'360 ONE WAM Ltd · 360ONE',source:'cadmin',ref:'CADM-2022-0015',
+   implStatus:'Applied'},
+  {id:'CA006',coId:'CSV031',coName:'Netflix Inc',isin:'US64110L1061',type:'Acquisition',effectiveDate:'2024-06-10',
+   desc:'Netflix acquired Next Games (Finnish mobile gaming studio) as part of gaming expansion strategy. Acquisition adds mobile gaming capabilities to Netflix Games division.',
+   status:'Processed',source:'cadmin',ref:'CADM-2024-0023',
+   acquirerCoId:'CSV031',acquirerName:'Netflix Inc',acquirerIsin:'US64110L1061',acquirerSector:'Consumer Discretionary',acquirerClassification:'Pure Play',
+   targetName:'Next Games Oyj',targetIsin:'FI4000291236',targetSector:'Consumer Discretionary',targetClassification:'Pure Play',targetDesc:'Mobile game developer, creator of Stranger Things franchise games',
+   implStatus:'Pending'},
+  {id:'CA007',coId:'CSV022',coName:'Compass Group Plc',isin:'GB00BD6K4575',type:'Delisting / Bankruptcy',effectiveDate:'2024-03-20',
+   desc:'Compass Group subsidiary entity Compass PLC Sub (CPGA) delisted from LSE. Parent entity listing and ISIN unaffected. Subsidiary to be removed from any sub-universe tracking.',
+   status:'Processed',oldVal:'LSE: CPGA (subsidiary) — Active',newVal:'Delisted',source:'cadmin',ref:'CADM-2024-0008',
+   implStatus:'Pending'},
+  {id:'CA008',coId:'CSV033',coName:'Nvidia Corp',isin:'US67066G1040',type:'Identifier Change',effectiveDate:'2024-06-10',
+   desc:'Nvidia Corp completed a 10-for-1 stock split. ISIN unchanged (US67066G1040). Par value adjusted. Ticker NVDA unchanged on NASDAQ.',
+   status:'Processed',oldVal:'Par value: $0.001 · Pre-split price basis',newVal:'Par value: $0.0001 · Post 10:1 split',source:'cadmin',ref:'CADM-2024-0441',
+   implStatus:'Pending'},
+  {id:'CA009',coId:'CSV013',coName:'Amazon Com Inc',isin:'US0231351067',type:'Merger',effectiveDate:'2023-07-19',
+   desc:'Amazon completed acquisition of iRobot Corporation. iRobot to be absorbed into Amazon Devices division. Post-merger, iRobot revenues will be consolidated under Amazon segments.',
+   status:'Processed',source:'cadmin',ref:'CADM-2023-0554',
+   acquirerCoId:'CSV013',acquirerName:'Amazon Com Inc',acquirerIsin:'US0231351067',acquirerSector:'Consumer Discretionary',acquirerClassification:'Pure Play',
+   targetName:'iRobot Corporation',targetIsin:'US4627261005',targetSector:'Consumer Discretionary',targetClassification:'Pure Play',targetDesc:'Consumer robotics manufacturer (Roomba vacuum cleaners and home robots)',
+   implStatus:'Pending'},
+  {id:'CA010',coId:'CSV039',coName:'Samsung Electronics Co Ltd',isin:'KR7005930003',type:'MIC Change',effectiveDate:'2024-01-02',
+   desc:'Samsung Electronics GDR moved from London Stock Exchange (XLON) to inclusion in additional venue XKRX primary. MIC updated in universe data.',
+   status:'Processed',oldVal:'Primary MIC: XLON',newVal:'Primary MIC: XKRX · Secondary: XLON',source:'cadmin',ref:'CADM-2024-0018',
+   implStatus:'Pending'},
+  {id:'CA011',coId:'CSV047',coName:'Teva Pharmaceutical Industries Ltd',isin:'IL0006290147',type:'Bankruptcy',effectiveDate:'2023-12-15',
+   desc:'Teva completed a landmark $4.25B opioid settlement agreement, avoiding bankruptcy proceedings. Entity remains active. Debt restructuring ongoing — classification review required.',
+   status:'Processed',oldVal:'Under opioid litigation — at-risk',newVal:'Settlement reached — active, debt restructuring',source:'cadmin',ref:'CADM-2023-1201',
+   implStatus:'Pending'},
+  {id:'CA012',coId:'CSV042',coName:'Siemens Ag',isin:'DE0007236101',type:'Spin-off / Demerger',effectiveDate:'2023-10-02',
+   desc:'Siemens AG completed the spin-off of Innomotics (formerly Siemens Large Drives Applications). Innomotics operates as independent entity. Siemens classification to be reviewed ex-Innomotics revenue.',
+   status:'Processed',oldVal:'Siemens AG (incl. Large Drives)',newVal:'Siemens AG (ex-Innomotics) + Innomotics GmbH',source:'cadmin',ref:'CADM-2023-1044',
+   spinoffEntity:'Innomotics GmbH',spinoffIsin:'DE-PRIVATE-INM001',implStatus:'Pending'},
+  {id:'CA013',coId:'CSV018',coName:'BARRICK MINING CORP',isin:'CA06849F1080',type:'Name Change',effectiveDate:'2024-05-01',
+   desc:'Barrick Gold Corporation rebranded to Barrick Mining Corporation, reflecting its expanded base metals portfolio alongside gold. TSX: ABX ticker unchanged.',
+   status:'Processed',oldVal:'Barrick Gold Corporation',newVal:'Barrick Mining Corporation',source:'cadmin',ref:'CADM-2024-0320',
+   implStatus:'Pending'},
+  {id:'CA014',coId:'CSV036',coName:'Roche Holding Ag',isin:'CH0012032113',type:'Acquisition',effectiveDate:'2024-04-05',
+   desc:'Roche Holding AG acquired Carmot Therapeutics, a clinical-stage biotech focused on GLP-1/GIP receptor agonists for obesity and diabetes. Deal value ~$3.1B.',
+   status:'Processed',source:'cadmin',ref:'CADM-2024-0215',
+   acquirerCoId:'CSV036',acquirerName:'Roche Holding Ag',acquirerIsin:'CH0012032113',acquirerSector:'Health Care',acquirerClassification:'Pure Play',
+   targetName:'Carmot Therapeutics Inc',targetIsin:'US-PRIVATE-CRM001',targetSector:'Health Care',targetClassification:'Pure Play',targetDesc:'Clinical-stage biotech; GLP-1/GIP receptor agonists for obesity & diabetes treatment',
+   implStatus:'Pending'},
+  // ── Standalone CAs (existing companies C-series) ────────────────────────
+  {id:'CA015',coId:'C003',coName:'Apple Inc',isin:'US0378331005',type:'Identifier Change',effectiveDate:'2023-10-15',
    desc:'SEDOL updated from 2046251 to 2046252 following ADR restructuring.',
-   status:'Processed',oldVal:'SEDOL: 2046251',newVal:'SEDOL: 2046252',source:'cadmin',ref:'CADM-2023-1089'},
-  {id:'CA002',coId:'C001',coName:'Alphabet Inc',type:'Name Change',date:'2023-12-01',
-   desc:'No parent entity name change. Certain subsidiary operations renamed as part of internal restructuring.',
-   status:'Processed',oldVal:'Google LLC (subsidiary)',newVal:'Alphabet Inc (parent unchanged)',source:'cadmin',ref:'CADM-2023-1134'},
-  {id:'CA003',coId:'C009',coName:'Mitsubishi UFJ Financial Group',type:'Spin-off / Demerger',date:'2023-04-03',
-   desc:'MUFG spun off its asset management division as MU Investments Co., Ltd. Classification re-review required for FY2023–2024.',
-   status:'Under Review',oldVal:'MUFG Consolidated',newVal:'MUFG + MU Investments Co.',source:'cadmin',ref:'CADM-2023-0887'},
-  {id:'CA004',coId:'C005',coName:'Meta Platforms Inc',type:'M&A',date:'2024-08-12',
-   desc:'Meta acquired Neural Magic Inc., an AI optimization startup. Marginal revenue impact expected from FY2025.',
-   status:'Under Review',oldVal:'',newVal:'Neural Magic (Acquired)',source:'cadmin',ref:'CADM-2024-0312'},
-  {id:'CA005',coId:'C013',coName:'360 ONE WAM Ltd',type:'Name Change',date:'2022-11-15',
-   desc:'Company changed its name from IIFL Wealth Management Ltd to 360 ONE WAM Ltd.',
-   status:'Processed',oldVal:'IIFL Wealth Management Ltd',newVal:'360 ONE WAM Ltd',source:'manual',ref:'MAN-2022-0015'},
-  {id:'CA006',coId:'C006',coName:'Netflix Inc',type:'M&A',date:'2024-06-10',
-   desc:'Netflix acquired exclusive rights and production capabilities from several anime studios for long-term content expansion.',
-   status:'Processed',oldVal:'',newVal:'Anime studio rights acquired',source:'manual',ref:'MAN-2024-0023'},
-  {id:'CA007',coId:'C014',coName:'Compass Group PLC',type:'Delisting / Bankruptcy',date:'2024-03-20',
+   status:'Processed',oldVal:'SEDOL: 2046251',newVal:'SEDOL: 2046252',source:'cadmin',ref:'CADM-2023-1089',implStatus:'Applied'},
+  {id:'CA016',coId:'C014',coName:'Compass Group PLC',isin:'GB00BD6K4575',type:'Delisting / Bankruptcy',effectiveDate:'2024-03-20',
    desc:'Compass Group subsidiary entity Compass PLC Sub delisted from LSE. Parent entity listing unaffected.',
-   status:'Processed',oldVal:'LSE: CPGA (subsidiary)',newVal:'Delisted',source:'manual',ref:'MAN-2024-0008'},
+   status:'Processed',oldVal:'LSE: CPGA (subsidiary)',newVal:'Delisted',source:'manual',ref:'MAN-2024-0008',implStatus:'Applied'},
 ];
 
 // ── AUDIT LOG ─────────────────────────────────────────────
@@ -1607,7 +1657,6 @@ const PAGE_NAMES = {
   workbench: 'ITICS Workbench',
   'company-report': 'Company Report',
   'gc-company': 'Golden Data — Company',
-  ca: 'CA Handling',
   'ca-gc': 'CA Golden Copy',
   reports: 'Download Reports',
   audit: 'Audit Trail',
@@ -3824,37 +3873,450 @@ window.confirmCaProcess = function(id) {
 }
 
 
+// ── CA type badge helper ─────────────────────────────────────────────────────
+function caTypeBadge(type) {
+  const map = {
+    'Merger':              'background:rgba(167,139,250,0.15);border-color:rgba(167,139,250,0.4);color:#a78bfa',
+    'Acquisition':         'background:rgba(59,126,255,0.12);border-color:rgba(59,126,255,0.35);color:#3b7eff',
+    'Spin-off / Demerger': 'background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.35);color:#f59e0b',
+    'Name Change':         'background:rgba(15,184,163,0.12);border-color:rgba(15,184,163,0.35);color:#0fb8a3',
+    'Identifier Change':   'background:rgba(136,146,170,0.15);border-color:rgba(136,146,170,0.35);color:#8892aa',
+    'MIC Change':          'background:rgba(136,146,170,0.15);border-color:rgba(136,146,170,0.35);color:#8892aa',
+    'Delisting / Bankruptcy':'background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.35);color:#ef4444',
+    'Bankruptcy':          'background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.35);color:#ef4444',
+  };
+  const style = map[type] || 'background:var(--bg3);border-color:var(--border2);color:var(--txt2)';
+  return `<span style="display:inline-block;font-size:10px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:4px;border:1px solid;white-space:nowrap;${style}">${esc(type)}</span>`;
+}
+
+function implStatusBadge(s) {
+  if (s === 'Applied') return `<span class="badge bw-gc" style="font-size:10px">✓ Applied</span>`;
+  return `<span class="badge bw-analyst" style="font-size:10px">Pending</span>`;
+}
+
 function renderCAGolden() {
-  const rows = CORP_ACTIONS.filter(ca=>ca.status==='Processed');
+  // Always fetch from CAdmin Golden Copy — join GC entries with their CORP_ACTIONS
+  const cadminGC = GOLDEN.filter(g => g.id && g.id.startsWith('GC') && !g.invalidated);
+
+  // Build joined list: for each GC entry find linked CA records
+  function buildRows() {
+    const joined = [];
+    cadminGC.forEach(g => {
+      const cas = CORP_ACTIONS.filter(ca => ca.coId === g.coId && ca.source === 'cadmin');
+      if (cas.length > 0) {
+        cas.forEach(ca => joined.push({ gc: g, ca }));
+      } else {
+        joined.push({ gc: g, ca: null });
+      }
+    });
+    return joined;
+  }
+
+  let allRows = buildRows();
+  let q = '', fType = '', fImpl = '', sCol = 'effectiveDate', sDir = 'desc';
+
+  function getFiltered() {
+    return allRows.filter(r => {
+      const searchStr = (r.gc.coName + r.gc.isin + (r.gc.l0Name||'') + (r.ca?.type||'') + (r.ca?.effectiveDate||'')).toLowerCase();
+      if (q && !searchStr.includes(q)) return false;
+      if (fType && (r.ca?.type||'') !== fType) return false;
+      if (fImpl === 'Pending' && (r.ca?.implStatus||'Pending') !== 'Pending') return false;
+      if (fImpl === 'Applied' && (r.ca?.implStatus||'Pending') !== 'Applied') return false;
+      return true;
+    });
+  }
+
+  function draw() {
+    let rows = getFiltered().slice().sort((a,b) => {
+      let av, bv;
+      if (sCol === 'effectiveDate') { av = a.ca?.effectiveDate||''; bv = b.ca?.effectiveDate||''; }
+      else if (sCol === 'type')     { av = a.ca?.type||''; bv = b.ca?.type||''; }
+      else if (sCol === 'implStatus') { av = a.ca?.implStatus||'Pending'; bv = b.ca?.implStatus||'Pending'; }
+      else { av = a.gc[sCol]||''; bv = b.gc[sCol]||''; }
+      return sDir==='asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+
+    const cnt = document.getElementById('cagc-cnt');
+    if (cnt) cnt.textContent = rows.length + ' of ' + allRows.length + ' entries';
+    const tbody = document.getElementById('cagc-body');
+    if (!tbody) return;
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-ico">⊘</div><div class="empty-title">No entries match filters</div></div></td></tr>`;
+      return;
+    }
+    const L0P={'10':'#3b7eff','15':'#0fb8a3','20':'#f59e0b','25':'#ef4444','30':'#a78bfa','35':'#22c55e','40':'#ff6b35','45':'#00c8b4','50':'#f472b6','55':'#60a5fa','60':'#84cc16','65':'#8892aa'};
+    tbody.innerHTML = rows.map(r => {
+      const {gc, ca} = r;
+      const col = L0P[gc.l0] || 'var(--blue)';
+      const co = COMPANIES.find(c => c.id === gc.coId);
+      const isMnA = ca && (ca.type === 'Merger' || ca.type === 'Acquisition');
+      return `<tr class="clickable" onclick="caGCDetail('${gc.id}','${ca?.id||''}')">
+        <td style="font-weight:600;font-size:12.5px;min-width:160px">${esc(gc.coName)}<div class="mono" style="font-size:10px;color:var(--txt3);margin-top:1px">${esc(gc.isin)}</div></td>
+        <td style="min-width:110px">${ca ? caTypeBadge(ca.type) : `<span style="font-size:11px;color:var(--txt3)">—</span>`}</td>
+        <td class="mono" style="font-size:12px;min-width:95px">${ca?.effectiveDate ? `<span style="font-weight:600">${esc(ca.effectiveDate)}</span>` : '—'}</td>
+        <td style="max-width:260px">
+          ${ca ? `<div style="font-size:12px;color:var(--txt2);line-height:1.45;max-width:250px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(ca.desc)}</div>` : '<span style="font-size:11px;color:var(--txt3)">No CA on record</span>'}
+          ${isMnA ? `<div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">
+            <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:var(--blue-bg);border:1px solid var(--blue-bd);color:var(--blue);font-weight:700">▲ ${esc(ca.acquirerName||'')}</span>
+            <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber);font-weight:700">▼ ${esc(ca.targetName||'')}</span>
+          </div>` : ''}
+          ${ca?.spinoffEntity ? `<div style="margin-top:3px"><span style="font-size:10px;padding:1px 6px;border-radius:3px;background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber);font-weight:700">↗ ${esc(ca.spinoffEntity)}</span></div>` : ''}
+        </td>
+        <td><span style="background:${col}22;border:1px solid ${col}44;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;">${esc(gc.l0Name||'—')}</span></td>
+        <td>${ca ? implStatusBadge(ca.implStatus||'Pending') : '—'}</td>
+        <td><span class="badge bs-cadmin" style="font-size:10px">● CAdmin</span></td>
+        <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+          ${co
+            ? `<button class="btn btn-ghost btn-xs" onclick="viewInMasterFromCA('${gc.coId}','${gc.id}','${ca?.id||''}')">View in Master Data-Companies</button>`
+            : `<span style="font-size:10.5px;color:var(--txt3);font-style:italic">Not in master list</span>`}
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Build CA type options
+  const allTypes = [...new Set(CORP_ACTIONS.filter(c=>c.source==='cadmin').map(c=>c.type))].sort();
+
   document.getElementById('view').innerHTML = `
   <div class="pg-hd">
     <div>
       <div class="pg-title">CA Golden Copy</div>
-      <div class="pg-sub">Processed corporate action records — ${rows.length} items</div>
+      <div class="pg-sub">CAdmin Golden Copy — verified corporate actions for classified companies</div>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="exportCAGC('csv')">CSV</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="cagc-cnt" style="font-size:11.5px;color:var(--txt3)"></span>
+      <button class="btn btn-ghost btn-sm" onclick="exportCAGC()">↓ CSV</button>
+    </div>
   </div>
   <div class="tbl-wrap">
+    <div class="tbl-bar" style="flex-wrap:wrap;gap:8px">
+      <div class="search-wrap" style="flex:1;min-width:180px;max-width:300px">
+        <span class="search-ico">⌕</span>
+        <input id="cagc-q" placeholder="Search company, ISIN, CA type…" oninput="window.cagcQ(this.value)">
+      </div>
+      <select class="fs" style="width:auto;padding:5px 28px 5px 10px" onchange="window.cagcFType(this.value)">
+        <option value="">All CA Types</option>
+        ${allTypes.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+      </select>
+      <select class="fs" style="width:auto;padding:5px 28px 5px 10px" onchange="window.cagcFImpl(this.value)">
+        <option value="">All Statuses</option>
+        <option value="Pending">Implementation Pending</option>
+        <option value="Applied">Implementation Applied</option>
+      </select>
+    </div>
     <table class="dt">
-      <thead><tr><th>CA ID</th><th>Company</th><th>CA Type</th><th>Date</th><th>Description</th><th>Source</th><th>Case Ref</th></tr></thead>
-      <tbody>
-        ${rows.length===0?`<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">⊘</div><div class="empty-title">No processed CAs yet</div></div></td></tr>`:''}
-        ${rows.map(ca=>`<tr>
-          <td class="mono" style="font-size:12px">${esc(ca.id)}</td>
-          <td style="font-weight:600">${esc(ca.coName)}</td>
-          <td><span class="chip">${esc(ca.type)}</span></td>
-          <td class="mono" style="font-size:12px">${ca.date}</td>
-          <td style="font-size:12.5px;max-width:260px">${esc(ca.desc)}</td>
-          <td>${ca.source==='cadmin'?`<span class="badge bs-cadmin">● CAdmin</span>`:`<span class="badge bs-manual">Manual</span>`}</td>
-          <td class="mono" style="font-size:11.5px;color:var(--txt3)">${esc(ca.ref||'—')}</td>
-        </tr>`).join('')}
-      </tbody>
+      <thead><tr>
+        <th class="sortable" onclick="window.cagcSort('coName')" style="min-width:150px">Company <span class="sort-ico">⇅</span></th>
+        <th class="sortable" onclick="window.cagcSort('type')">CA Type <span class="sort-ico">⇅</span></th>
+        <th class="sortable" onclick="window.cagcSort('effectiveDate')">Effective Date <span class="sort-ico" id="cagc-ico-effectiveDate">↓</span></th>
+        <th>Description / Parties</th>
+        <th class="sortable" onclick="window.cagcSort('l0Name')">Sector <span class="sort-ico">⇅</span></th>
+        <th class="sortable" onclick="window.cagcSort('implStatus')">Impl. Status <span class="sort-ico">⇅</span></th>
+        <th>Source</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="cagc-body"></tbody>
     </table>
   </div>`;
+
+  window.cagcQ      = v => { q = v.toLowerCase(); draw(); };
+  window.cagcFType  = v => { fType = v; draw(); };
+  window.cagcFImpl  = v => { fImpl = v; draw(); };
+  window.cagcSort   = col => {
+    sDir = sCol===col ? (sDir==='asc'?'desc':'asc') : (col==='effectiveDate'?'desc':'asc');
+    sCol = col;
+    draw();
+  };
+  draw();
 }
+
+// ── CA Golden Copy row detail modal ────────────────────────────────────────
+window.caGCDetail = function(gcId, caId) {
+  const gc = GOLDEN.find(x => x.id === gcId); if (!gc) return;
+  const ca = caId ? CORP_ACTIONS.find(x => x.id === caId) : null;
+  const isMnA = ca && (ca.type === 'Merger' || ca.type === 'Acquisition');
+  const isSpinoff = ca && ca.type === 'Spin-off / Demerger';
+  const hasOldNew = ca && (ca.oldVal || ca.newVal);
+  const L0P={'10':'#3b7eff','15':'#0fb8a3','20':'#f59e0b','25':'#ef4444','30':'#a78bfa','35':'#22c55e','40':'#ff6b35','45':'#00c8b4','50':'#f472b6','55':'#60a5fa','60':'#84cc16','65':'#8892aa'};
+  const col = L0P[gc.l0] || 'var(--blue)';
+
+  showModal(`
+  <div class="m-hd">
+    <div>
+      <div class="m-title">${esc(gc.coName)}</div>
+      <div class="m-sub">${esc(gc.isin)} · ${ca ? esc(ca.type) : 'No CA on record'}</div>
+    </div>
+    <button class="m-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="m-body">
+
+    ${ca ? `
+    <!-- CA Summary banner -->
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);margin-bottom:14px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          ${caTypeBadge(ca.type)}
+          <span style="font-family:var(--mono);font-size:11px;color:var(--txt3)">Ref: ${esc(ca.ref||'—')}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--txt);line-height:1.5">${esc(ca.desc)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Effective Date</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--txt)">${esc(ca.effectiveDate||'—')}</div>
+        <div style="margin-top:6px">${implStatusBadge(ca.implStatus||'Pending')}</div>
+      </div>
+    </div>
+
+    <!-- M&A: Acquirer + Target classification -->
+    ${isMnA ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">${ca.type === 'Merger' ? 'Merger Parties' : 'Acquirer & Target'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="padding:10px 12px;border-radius:8px;background:var(--blue-bg);border:1px solid var(--blue-bd)">
+          <div style="font-size:9.5px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">▲ Acquirer</div>
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:2px">${esc(ca.acquirerName||'—')}</div>
+          <div style="font-family:var(--mono);font-size:10.5px;color:var(--txt3);margin-bottom:6px">${esc(ca.acquirerIsin||'—')}</div>
+          <div style="font-size:11px;color:var(--txt2)"><span style="color:var(--txt3)">Sector:</span> ${esc(ca.acquirerSector||'—')}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px"><span style="color:var(--txt3)">Classification:</span> <span style="font-weight:600">${esc(ca.acquirerClassification||'—')}</span></div>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:var(--amber-bg);border:1px solid var(--amber-bd)">
+          <div style="font-size:9.5px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">▼ Target</div>
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:2px">${esc(ca.targetName||'—')}</div>
+          <div style="font-family:var(--mono);font-size:10.5px;color:var(--txt3);margin-bottom:6px">${esc(ca.targetIsin||'—')}</div>
+          <div style="font-size:11px;color:var(--txt2)"><span style="color:var(--txt3)">Sector:</span> ${esc(ca.targetSector||'—')}</div>
+          <div style="font-size:11px;color:var(--txt2);margin-top:2px"><span style="color:var(--txt3)">Classification:</span> <span style="font-weight:600">${esc(ca.targetClassification||'—')}</span></div>
+          ${ca.targetDesc ? `<div style="font-size:10.5px;color:var(--txt3);margin-top:5px;padding-top:5px;border-top:1px solid var(--amber-bd);line-height:1.4">${esc(ca.targetDesc)}</div>` : ''}
+        </div>
+      </div>
+    </div>` : ''}
+
+    <!-- Spin-off entity -->
+    ${isSpinoff && ca.spinoffEntity ? `
+    <div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--amber-bg);border:1px solid var(--amber-bd)">
+      <div style="font-size:9.5px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px">↗ Spun-off Entity</div>
+      <div style="font-weight:700;font-size:12.5px">${esc(ca.spinoffEntity)}</div>
+      ${ca.spinoffIsin ? `<div style="font-family:var(--mono);font-size:10.5px;color:var(--txt3);margin-top:2px">${esc(ca.spinoffIsin)}</div>` : ''}
+    </div>` : ''}
+
+    <!-- Before / After for identifier, name, MIC changes -->
+    ${hasOldNew ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Before / After</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="padding:8px 12px;border-radius:6px;background:var(--bg3);border:1px solid var(--border2)">
+          <div style="font-size:9.5px;color:var(--txt3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Before</div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--txt)">${esc(ca.oldVal||'—')}</div>
+        </div>
+        <div style="padding:8px 12px;border-radius:6px;background:var(--green-bg);border:1px solid var(--green-bd)">
+          <div style="font-size:9.5px;color:var(--green);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">After</div>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--txt)">${esc(ca.newVal||'—')}</div>
+        </div>
+      </div>
+    </div>` : ''}
+    ` : `<div class="info-box ib-info" style="margin-bottom:14px">No corporate action record found for this GC entry.</div>`}
+
+    <!-- GC Classification details -->
+    <div style="padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">GC Classification</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <div><div style="font-size:10px;color:var(--txt3);margin-bottom:2px">Sector</div>
+          <span style="background:${col}22;border:1px solid ${col}44;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;">${esc(gc.l0Name||'—')}</span>
+        </div>
+        <div><div style="font-size:10px;color:var(--txt3);margin-bottom:2px">Years</div><div style="font-family:var(--mono);font-size:12px">${(gc.yearsGC||[]).join(', ')||'—'}</div></div>
+        <div><div style="font-size:10px;color:var(--txt3);margin-bottom:2px">Pushed</div><div style="font-family:var(--mono);font-size:12px">${esc(gc.pushedDate||'—')}</div></div>
+        <div><div style="font-size:10px;color:var(--txt3);margin-bottom:2px">By</div><div style="font-size:12px">${esc(gc.pushedBy||'—')}</div></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="m-foot">
+    <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+    ${ca && (ca.implStatus||'Pending')==='Pending'
+      ? `<button class="btn btn-primary" onclick="closeModal();viewInMasterFromCA('${gc.coId}','${gc.id}','${ca.id}')">View in Master Data-Companies</button>`
+      : `<button class="btn btn-ghost" onclick="closeModal();viewInMasterFromCA('${gc.coId}','${gc.id}','${ca?.id||''}')">View in Master Data-Companies</button>`
+    }
+  </div>`, 'm-lg');
+};
+
+// ── View in Master Data-Companies (from CA GC row) ─────────────────────────
+window.viewInMasterFromCA = function(coId, gcId, caId) {
+  const c = COMPANIES.find(x => x.id === coId); if (!c) return;
+  const gcEntry = GOLDEN.find(x => x.id === gcId);
+  const ca = caId ? CORP_ACTIONS.find(x => x.id === caId) : null;
+  const isMnA = ca && (ca.type === 'Merger' || ca.type === 'Acquisition');
+  const alreadyApplied = ca && (ca.implStatus||'Pending') === 'Applied';
+
+  showModal(`
+  <div class="m-hd">
+    <div>
+      <div class="m-title">${esc(c.name)}</div>
+      <div class="m-sub">Master Data — Companies · ${esc(c.isin)} · ${esc(c.country||'—')}</div>
+    </div>
+    <button class="m-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="m-body">
+
+    <!-- CA action banner -->
+    ${ca ? `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid ${alreadyApplied ? 'var(--green-bd)' : 'var(--blue-bd)'};background:${alreadyApplied ? 'var(--green-bg)' : 'var(--blue-bg)'};margin-bottom:14px">
+      <span style="font-size:15px;flex-shrink:0">${alreadyApplied ? '✓' : '⚡'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+          ${caTypeBadge(ca.type)}
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--txt)">Effective: ${esc(ca.effectiveDate||'—')}</span>
+          ${implStatusBadge(ca.implStatus||'Pending')}
+        </div>
+        <div style="font-size:12px;color:var(--txt2);line-height:1.45">${esc(ca.desc)}</div>
+        ${isMnA ? `<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10.5px;padding:1px 7px;border-radius:3px;background:var(--blue-bg);border:1px solid var(--blue-bd);color:var(--blue);font-weight:700">▲ Acquirer: ${esc(ca.acquirerName||'')}</span>
+          <span style="font-size:10.5px;padding:1px 7px;border-radius:3px;background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber);font-weight:700">▼ Target: ${esc(ca.targetName||'')}</span>
+        </div>` : ''}
+      </div>
+    </div>` : `<div class="info-box ib-info" style="margin-bottom:14px">No corporate action record linked to this GC entry.</div>`}
+
+    <!-- Master data fields -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
+      ${[['ISIN',c.isin],['SEDOL',c.sedol||'—'],['Ticker',c.ticker||'—'],['Exchange',c.exchange||'—'],['Country',c.country||'—'],['Region',c.region||'—'],['Currency',c.currency||'—'],['FY End',c.fyEnd||'—'],['Status',c.status||'Active'],['CA Admin',c.caAdmin?'Yes':'No']].map(([l,v])=>`
+      <div><div style="font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">${l}</div><div class="mono" style="font-size:12.5px">${esc(String(v))}</div></div>`).join('')}
+    </div>
+    ${c.bd ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"><div style="font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Business Description</div><div style="font-size:12.5px;line-height:1.6;color:var(--txt2)">${esc(c.bd)}</div></div>` : ''}
+  </div>
+  <div class="m-foot">
+    <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+    ${ca && !alreadyApplied
+      ? `<button class="btn btn-primary" onclick="applyCAImplementation('${coId}','${gcId}','${ca.id}')">⚡ Apply CA Implementation</button>`
+      : ca && alreadyApplied
+        ? `<button class="btn btn-ghost" disabled style="opacity:0.5">✓ Already Applied</button>`
+        : ''
+    }
+  </div>`, 'm-lg');
+};
+
+// ── Apply CA Implementation ─────────────────────────────────────────────────
+window.applyCAImplementation = function(coId, gcId, caId) {
+  const c = COMPANIES.find(x => x.id === coId); if (!c) return;
+  const gcEntry = GOLDEN.find(x => x.id === gcId); if (!gcEntry) return;
+  const ca = CORP_ACTIONS.find(x => x.id === caId); if (!ca) return;
+  const isMnA = ca.type === 'Merger' || ca.type === 'Acquisition';
+  const isSpinoff = ca.type === 'Spin-off / Demerger';
+  const isNameChange = ca.type === 'Name Change';
+  const isIdChange = ca.type === 'Identifier Change' || ca.type === 'MIC Change';
+  const isDelisting = ca.type === 'Delisting / Bankruptcy' || ca.type === 'Bankruptcy';
+
+  closeModal();
+  showModal(`
+  <div class="m-hd">
+    <div><div class="m-title">Apply CA Implementation</div><div class="m-sub">${esc(c.name)} · ${esc(ca.type)}</div></div>
+    <button class="m-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="m-body">
+
+    <!-- CA summary -->
+    <div style="padding:10px 12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border2);margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+        ${caTypeBadge(ca.type)}
+        <span style="font-family:var(--mono);font-size:11.5px;font-weight:700">Effective: ${esc(ca.effectiveDate||'—')}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--txt3)">${esc(ca.ref||'')}</span>
+      </div>
+      <div style="font-size:12px;color:var(--txt2);line-height:1.45">${esc(ca.desc)}</div>
+    </div>
+
+    ${isMnA ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="padding:8px 10px;border-radius:6px;background:var(--blue-bg);border:1px solid var(--blue-bd)">
+        <div style="font-size:9.5px;font-weight:700;color:var(--blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">▲ Acquirer</div>
+        <div style="font-weight:700;font-size:12px">${esc(ca.acquirerName||'—')}</div>
+        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${esc(ca.acquirerSector||'—')} · <strong>${esc(ca.acquirerClassification||'—')}</strong></div>
+      </div>
+      <div style="padding:8px 10px;border-radius:6px;background:var(--amber-bg);border:1px solid var(--amber-bd)">
+        <div style="font-size:9.5px;font-weight:700;color:var(--amber);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">▼ Target</div>
+        <div style="font-weight:700;font-size:12px">${esc(ca.targetName||'—')}</div>
+        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${esc(ca.targetSector||'—')} · <strong>${esc(ca.targetClassification||'—')}</strong></div>
+        ${ca.targetDesc ? `<div style="font-size:10.5px;color:var(--txt3);margin-top:3px;line-height:1.35">${esc(ca.targetDesc)}</div>` : ''}
+      </div>
+    </div>` : ''}
+
+    ${isNameChange && (ca.oldVal||ca.newVal) ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="padding:8px 10px;border-radius:6px;background:var(--bg3);border:1px solid var(--border2)">
+        <div style="font-size:9.5px;color:var(--txt3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Old Name / Identifiers</div>
+        <div style="font-family:var(--mono);font-size:12px">${esc(ca.oldVal||'—')}</div>
+      </div>
+      <div style="padding:8px 10px;border-radius:6px;background:var(--green-bg);border:1px solid var(--green-bd)">
+        <div style="font-size:9.5px;color:var(--green);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">New Name / Identifiers</div>
+        <div style="font-family:var(--mono);font-size:12px;font-weight:600">${esc(ca.newVal||'—')}</div>
+      </div>
+    </div>` : ''}
+
+    ${(isIdChange || isDelisting) && (ca.oldVal||ca.newVal) ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="padding:8px 10px;border-radius:6px;background:var(--bg3);border:1px solid var(--border2)">
+        <div style="font-size:9.5px;color:var(--txt3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Before</div>
+        <div style="font-family:var(--mono);font-size:12px">${esc(ca.oldVal||'—')}</div>
+      </div>
+      <div style="padding:8px 10px;border-radius:6px;background:var(--green-bg);border:1px solid var(--green-bd)">
+        <div style="font-size:9.5px;color:var(--green);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">After</div>
+        <div style="font-family:var(--mono);font-size:12px;font-weight:600">${esc(ca.newVal||'—')}</div>
+      </div>
+    </div>` : ''}
+
+    ${isSpinoff && ca.spinoffEntity ? `
+    <div style="padding:8px 10px;border-radius:6px;background:var(--amber-bg);border:1px solid var(--amber-bd);margin-bottom:14px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--amber);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">↗ Spun-off Entity to Add</div>
+      <div style="font-weight:700;font-size:12px">${esc(ca.spinoffEntity)}</div>
+      ${ca.spinoffIsin ? `<div style="font-family:var(--mono);font-size:11px;color:var(--txt3);margin-top:2px">${esc(ca.spinoffIsin)}</div>` : ''}
+    </div>` : ''}
+
+    <div class="info-box ib-warn" style="margin-bottom:12px">Applying this implementation will update the company's master record and log the action in the Audit Trail.</div>
+    <div class="fg"><label class="fl">Implementation Notes</label><textarea class="ft" id="ca-impl-note" rows="3" placeholder="Optional — describe changes made, pages referenced, decisions taken…"></textarea></div>
+  </div>
+  <div class="m-foot">
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-success" onclick="confirmCAImplementation('${coId}','${gcId}','${caId}')">✓ Confirm Apply</button>
+  </div>`, 'm-lg');
+};
+
+window.confirmCAImplementation = function(coId, gcId, caId) {
+  const c = COMPANIES.find(x => x.id === coId); if (!c) return;
+  const gcEntry = GOLDEN.find(x => x.id === gcId); if (!gcEntry) return;
+  const ca = CORP_ACTIONS.find(x => x.id === caId); if (!ca) return;
+  const note = document.getElementById('ca-impl-note')?.value.trim() || '';
+  ca.implStatus = 'Applied';
+  c.caAdmin = true;
+  AUDIT.unshift({
+    id: 'AL'+uid(), user: currentUser.name, role: currentRole,
+    action: 'Applied CA Implementation',
+    co: c.name, year: (gcEntry.yearsGC||[]).join(', ') || '—',
+    ts: new Date().toLocaleString('en-GB'),
+    detail: '['+ca.type+'] CA ref '+ca.ref+' effective '+ca.effectiveDate+'. Applied to master record.' + (note ? ' Notes: '+note : ''),
+  });
+  closeModal();
+  toast('CA Implementation applied for ' + c.name + '.', 'ok');
+  renderCAGolden();
+};
+
 window.exportCAGC = function() {
-  const rows = CORP_ACTIONS.filter(ca=>ca.status==='Processed').map(ca=>({'ID':ca.id,'Company':ca.coName,'Type':ca.type,'Date':ca.date,'Description':ca.desc,'Source':ca.source,'Ref':ca.ref||''}));
-  dlCSV(rows,'ca_golden_copy.csv'); toast('CA Golden Copy exported.','ok');
+  const cadminGC = GOLDEN.filter(g => g.id && g.id.startsWith('GC') && !g.invalidated);
+  const exportRows = [];
+  cadminGC.forEach(g => {
+    const cas = CORP_ACTIONS.filter(ca => ca.coId === g.coId && ca.source === 'cadmin');
+    if (cas.length) {
+      cas.forEach(ca => exportRows.push({
+        'GC ID': g.id, 'Company': g.coName, 'ISIN': g.isin, 'Sector': g.l0Name,
+        'CA Type': ca.type, 'Effective Date': ca.effectiveDate||'', 'Description': ca.desc,
+        'Acquirer': ca.acquirerName||'', 'Target': ca.targetName||'',
+        'Old Value': ca.oldVal||'', 'New Value': ca.newVal||'',
+        'Spinoff Entity': ca.spinoffEntity||'',
+        'Impl. Status': ca.implStatus||'Pending', 'Ref': ca.ref||'', 'Source': 'CAdmin'
+      }));
+    } else {
+      exportRows.push({'GC ID': g.id, 'Company': g.coName, 'ISIN': g.isin, 'Sector': g.l0Name,
+        'CA Type': '', 'Effective Date': '', 'Description': '', 'Acquirer': '', 'Target': '',
+        'Old Value': '', 'New Value': '', 'Spinoff Entity': '', 'Impl. Status': '', 'Ref': '', 'Source': 'CAdmin'});
+    }
+  });
+  dlCSV(exportRows, 'ca_golden_copy.csv');
+  toast('CA Golden Copy exported.', 'ok');
 };
 
 // ═══════════════════════════════════════════════════════════
