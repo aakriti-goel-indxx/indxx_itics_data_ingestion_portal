@@ -599,6 +599,11 @@ select.fs { appearance: none; background-image: url("data:image/svg+xml,%3Csvg x
 .rej-hdr { font-size: 10.5px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-family: var(--mono); }
 .comm-box { background: var(--amber-bg); border: 1px solid var(--amber-bd); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
 .comm-hdr { font-size: 10.5px; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-family: var(--mono); }
+.ai-info-box { background: var(--blue-bg); border: 1px solid var(--blue-bd); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.ai-info-hdr { font-size: 10.5px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-family: var(--mono); }
+.ai-ok-box { background: var(--green-bg); border: 1px solid var(--green-bd); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.ai-ok-hdr { font-size: 10.5px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-family: var(--mono); }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* Sortable column headers */
 th.sortable { cursor:pointer; user-select:none; }
@@ -1519,10 +1524,36 @@ let AUDIT = [
   {id:'AL008',user:'Samyak Jain',role:'qc',action:'QC Accepted → Pushed to GC',co:'Royal Bank of Canada',year:'2017–2025',ts:'2025-03-01 16:40',detail:'All years 2017–2025 accepted. Pushed to Golden Copy.'},
 ];
 
+// ── DECISION LOG ──────────────────────────────────────────
+// Captures every analyst Accept/Reject decision on AI (Extraction + Mapping)
+// output, with mandatory documented reasoning. This is the dataset used to
+// analyze decision patterns over time and improve Extraction/Mapping model accuracy.
+// decision: 'accepted' | 'rejected' | 'remap_triggered' | 'mapping_corrected'
+// issueType (when decision is 'rejected'/'remap_triggered'/'mapping_corrected'): 'extraction' | 'mapping'
+let DECISIONLOG = [];
+
 // ═══════════════════════════════════════════════════════════
 // CORE UTILITIES
 // ═══════════════════════════════════════════════════════════
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Mandatory-reason validation, shared by Classification-data rejection and Sub-Theme change reasons.
+// Blocks vague/low-effort text ("wrong", ".") so the captured reasoning is actually usable for model training.
+function validateReasonText(raw) {
+  const text = (raw||'').trim();
+  const words = text.split(/\s+/).filter(Boolean);
+  const cleanedChars = text.replace(/\s/g,'').toLowerCase();
+  const uniqueChars = new Set(cleanedChars).size;
+  const isRepeatedChar = cleanedChars.length>0 && /^(.)\1*$/.test(cleanedChars);
+  const isLongEnough = text.length >= 30;
+  const hasEnoughWords = words.length >= 6;
+  const isMeaningful = uniqueChars >= 6 && !isRepeatedChar;
+  const valid = isLongEnough && hasEnoughWords && isMeaningful;
+  let message;
+  if (!isLongEnough || !hasEnoughWords) message = `Minimum 30 characters and 6 words required — currently ${text.length} chars, ${words.length} word${words.length===1?'':'s'}.`;
+  else if (!isMeaningful) message = 'That reason looks too repetitive or vague — please describe the specific issue.';
+  else message = 'Looks good ✓ — this will be saved for the decision/audit log.';
+  return { valid, message };
+}
 function uid() { return (Date.now().toString(36)+Math.random().toString(36).slice(2,6)).toUpperCase(); }
 function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); } catch{return d||'—';} }
 function fmtNum(n) { return typeof n==='number'? n.toLocaleString('en-IN',{maximumFractionDigits:2}) : n; }
@@ -1620,6 +1651,36 @@ function revBadge(c) {
   if (c==='Quasi')     return `<span class="badge br-quasi">Quasi</span>`;
   return `<span class="badge br-marginal">Marginal</span>`;
 }
+// Revenue Class is system-derived from Revenue % against backend-defined thresholds — never manually chosen.
+// Pure Play >= 50%, Quasi 20-49.99%, Marginal < 20%.
+function computeRevenueClass(pct) {
+  const p = parseFloat(pct) || 0;
+  if (p >= 50) return 'Pure Play';
+  if (p >= 20) return 'Quasi';
+  return 'Marginal';
+}
+// Total Revenue % reconciliation badge — segments across a fiscal year must sum to 100%.
+// incompleteCount flags rows still missing a Revenue figure, since % is derived from Revenue share and
+// would otherwise always show "100%" the instant any revenue exists — even with new blank rows sitting unfilled.
+function totalPctBadgeHTML(total, incompleteCount) {
+  incompleteCount = incompleteCount || 0;
+  if (incompleteCount > 0) return `<span class="badge" style="background:var(--amber-bg);color:var(--amber);border-color:var(--amber-bd)">⚠ ${incompleteCount} segment${incompleteCount>1?'s':''} missing Revenue</span>`;
+  if (Math.abs(total-100) <= 0.5) return `<span class="badge" style="background:var(--green-bg);color:var(--green);border-color:var(--green-bd)">✓ Matched</span>`;
+  if (total <= 0.001) return `<span class="badge" style="background:var(--amber-bg);color:var(--amber);border-color:var(--amber-bd)">⚠ Enter Revenue for each segment</span>`;
+  return `<span class="badge" style="background:var(--amber-bg);color:var(--amber);border-color:var(--amber-bd)">⚠ Needs review — should total 100%</span>`;
+}
+// Required issue category for Classification-data rejection — a structured fallback signal alongside the
+// free-text reason, so a decision still carries a usable "what went wrong" even if the comment is weak.
+const CLS_ISSUE_LABELS = [
+  'Incorrect Revenue Amount',
+  'Incorrect Segment Label',
+  'Missing Segment',
+  'Duplicate / Overlapping Segment',
+  "Revenue % Doesn't Reconcile",
+  'Wrong Page Reference',
+  'Wrong Fiscal Year Data',
+  'Other',
+];
 function prioBadge(p) {
   if (p==='high')   return `<span class="badge bp-high">High</span>`;
   if (p==='medium') return `<span class="badge bp-medium">Medium</span>`;
@@ -2767,7 +2828,25 @@ function renderWorkbench() {
   draw();
 }
 
-function buildRoleActionBar(w, isEditable, activeFormTab) {
+// ═══════════════════════════════════════════════════════════
+// AI REVIEW GATES — Classification data (whole table) + Sub-Theme (per row)
+// ═══════════════════════════════════════════════════════════
+function getClsGateStatus(w, year) {
+  return ((w.clsGate||{})[year]||{}).status || 'pending';
+}
+function isRowSubThemeFinalized(w, year, idx) {
+  const g = (w.subThemeGate||{})[year];
+  return !!(g && g[idx] && g[idx].status === 'finalized');
+}
+// True once: Classification data accepted AND every row's Sub-Theme has been finalized via "Set"
+function isYearFullyResolved(w, year) {
+  if (getClsGateStatus(w, year) !== 'accepted') return false;
+  const segs = ((CLSDATA[w.coId]||{})[year]||{}).segments || [];
+  return segs.every((s,i) => isRowSubThemeFinalized(w, year, i));
+}
+
+
+function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
   const role = currentRole;
 
   // ANALYST: can classify, save draft, add segments, submit
@@ -2782,13 +2861,18 @@ function buildRoleActionBar(w, isEditable, activeFormTab) {
           return `<span style="font-size:11px;color:var(--amber);padding:3px 8px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-bd)">Invalidated — ${allOpen ? 'all years editable' : invYrs2.join(', ') + ' editable · other years GC-locked'}</span>`;
         })()
       : '';
+
+    // Gate Submit for QC on the two AI review gates (Classification data + Sub-Theme), if this row is Automation-processed
+    const isAIRow = !!w.llm;
+    const aiResolved = !isAIRow || isYearFullyResolved(w, activeYear);
+
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">Cancel</button>
       <button class="btn btn-ghost btn-sm" onclick="saveDraft('${w.id}')">Save Draft</button>
-      ${activeFormTab === 'revenue' ? `<button class="btn btn-teal btn-sm" onclick="addRevRow()">+ Segment</button>` : ''}
+      ${activeFormTab === 'revenue' ? `<button class="btn btn-teal btn-sm" onclick="addRevRow()">+ Segment</button><button class="btn btn-ghost btn-sm" onclick="saveSegmentEdits()" title="Persist any new or corrected segment rows">💾 Save Segments</button>` : ''}
       <div style="flex:1"></div>
       ${invNote}${rejNote}
-      <button class="btn btn-primary btn-sm" onclick="submitForQC('${w.id}')">Submit for QC →</button>`;
+      <button class="btn btn-primary btn-sm" ${aiResolved?'':'disabled title="Confirm the Classification data and Sub-Theme review below first"'} onclick="submitForQC('${w.id}')">Submit for QC →</button>`;
   }
 
   // QC: inline accept / reject using comment box already in form
@@ -3423,42 +3507,106 @@ function renderCompanyReport(wbId) {
     _segL0.forEach(function(x){ _l0pct[x.l0c] = (_l0pct[x.l0c] || 0) + x.pct; });
     const _domL0c = Object.keys(_l0pct).sort(function(a,b){ return _l0pct[b]-_l0pct[a]; })[0] || w.l0 || '';
     const _domL0n = (TAX.L0.find(function(x){ return x.c === _domL0c; }) || {}).n || getL0Name(_domL0c) || _domL0c;
+    const _initTotalPct = d.segments.reduce(function(a,s){ return a + (s.pct||0); }, 0);
+    const _initIncomplete = d.segments.filter(function(s){ return !(s.rev>0); }).length;
+
+    // Gate 1 — Classification data (AR Classification / Revenue / Revenue % / Revenue Class), whole table
+    const clsStatus = w.llm ? getClsGateStatus(w, activeYear) : null;
+    const clsGateRec = (w.clsGate||{})[activeYear] || {};
+    const clsLocked = w.llm && clsStatus !== 'accepted';        // Sub-Theme review locked until accepted
+    const clsRowsEditable = w.llm && clsStatus === 'rejected';   // AR Classification/Revenue/Revenue%/Class editable
+    const finalSectorReady = !w.llm || isYearFullyResolved(w, activeYear);
+
+    let clsBanner = '';
+    if (isEditable && w.llm) {
+      if (clsStatus === 'pending') {
+        clsBanner = `<div class="ai-info-box">
+          <div class="ai-info-hdr">Review Needed</div>
+          <div style="font-size:12.5px;margin-bottom:8px">Confirm the AR Classification, Revenue, Revenue % and Revenue Class values below against the Annual Report.</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-danger btn-xs" onclick="clsGateOpenReject()">✕ Reject</button>
+            <button class="btn btn-success btn-xs" onclick="clsGateAccept()">✓ Accept</button>
+          </div>
+        </div>`;
+      } else if (clsStatus === 'rejected') {
+        clsBanner = `<div class="rej-box" id="cls-gate-banner">
+          <div class="rej-hdr">Correction Needed</div>
+          ${clsGateRec.issueLabel ? `<div style="margin-bottom:6px"><span class="badge" style="background:var(--red-bg);color:var(--red);border-color:var(--red-bd)">${esc(clsGateRec.issueLabel)}</span></div>` : ''}
+          <div style="font-size:12.5px;margin-bottom:8px">${esc(clsGateRec.reason||'—')}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-bottom:8px">Edit the AR Classification, Revenue, Revenue % and Revenue Class values directly in the table below, then re-run the Sub-Theme suggestions.</div>
+          <button class="btn btn-primary btn-xs" id="cls-retrigger-btn" onclick="clsGateRetrigger()">Re-suggest Sub-Themes →</button>
+        </div>`;
+      } else if (clsStatus === 'accepted') {
+        clsBanner = `<div class="ai-ok-box">
+          <div class="ai-ok-hdr">Classification Confirmed</div>
+          <div style="font-size:12.5px">Review each Sub-Theme below — Theme and Sector fill in as you confirm each one.</div>
+        </div>`;
+      }
+    }
+
     const revenueContent = `
+    ${clsBanner}
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 0 12px;font-size:12px" id="revtotal-bar">
+      <span style="color:var(--txt3);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.5px">Total Revenue %</span>
+      <span id="revtotal-value" style="font-family:var(--mono);font-weight:700;font-size:14px">${_initTotalPct.toFixed(1)}%</span>
+      <span id="revtotal-badge">${totalPctBadgeHTML(_initTotalPct, _initIncomplete)}</span>
+    </div>
     <div style="overflow-x:auto">
       <table class="rev-tbl" id="rev-table">
         <thead><tr>
-          <th>AR Classification</th><th>Final Sector</th><th>Sector</th><th>Theme</th><th>Sub-Theme</th>
-          <th>Revenue (${co.currency||'USD'} Mn)</th><th>Revenue %</th>
-          <th>Revenue Class</th><th>Page</th>
+          <th>AR Classification</th>
+          <th>Revenue (${co.currency||'USD'} Mn)</th><th>Revenue %</th><th>Revenue Class</th>
+          <th>Final Sector</th><th>Sector</th><th>Theme</th><th>Sub-Theme</th>
+          <th>Page</th>
           ${isYearEditable(activeYear)?'<th></th>':''}
         </tr></thead>
         <tbody id="rev-tbody">
-          ${d.segments.length>0 ? d.segments.map((s,i)=>`
+          ${d.segments.length>0 ? d.segments.map((s,i)=>{
+            const rowGated = w.llm && clsLocked;
+            const rowEditableCls = w.llm ? clsRowsEditable : isYearEditable(activeYear);
+            const finalized = !w.llm || isRowSubThemeFinalized(w, activeYear, i);
+            const labelCell = rowEditableCls
+              ? `<input class="fi-inline" id="cls-label-${i}" value="${esc(s.label)}">`
+              : `<span>${esc(s.label)}</span>`;
+            const revCell = rowEditableCls
+              ? `<input class="fi-inline mono rc-rev-input" id="cls-rev-${i}" type="number" step="0.1" style="width:90px" value="${s.rev||0}" oninput="recalcAllPercentages()">`
+              : `<span class="mono rc-rev-static" data-rev="${s.rev||0}" style="font-size:12px">${fmtNum(s.rev||0)}</span>`;
+            const pctCell = `<span class="mono rc-pct-display" style="font-size:12px;font-weight:600">${s.pct.toFixed(1)}%</span>`;
+            const clsCell = rowEditableCls
+              ? `<span class="rc-cls-display" id="cls-clsbadge-${i}">${revBadge(computeRevenueClass(s.pct))}</span><div style="font-size:9.5px;color:var(--txt3);margin-top:2px">auto · by Revenue %</div>`
+              : revBadge(s.cls);
+            const finalSectorCell = finalSectorReady
+              ? `<span class="chip" style="font-size:11px;background:var(--teal-bg);color:var(--teal);border-color:var(--teal-bd)">${esc(_domL0n)}</span>`
+              : `<span style="color:var(--txt3);font-size:11px">–</span>`;
+            const sectorCell = rowGated || !finalized
+              ? `<span style="color:var(--txt3);font-size:11px">–</span>`
+              : `<span class="chip" style="font-size:11px">${esc(_segL0[i].l0n)}</span>`;
+            const themeCell = rowGated || !finalized
+              ? `<span style="color:var(--txt3);font-size:11px">–</span>`
+              : `<span style="font-size:12px;color:var(--txt2)">${esc(s.l1n)}</span>`;
+            const subThemeCell = rowGated
+              ? `<div style="font-size:12px;font-weight:600">${esc(s.l2n)} <span style="color:var(--txt3);font-size:11px;cursor:not-allowed;margin-left:4px;opacity:.6" title="Confirm the Classification data above first">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`
+              : finalized
+                ? `<div style="font-size:12px">${esc(s.l2n)}</div><div class="mono" style="font-size:10px;color:var(--txt3)">${s.l2}</div>`
+                : `<div style="font-size:12px;font-weight:600">${esc(s.l2n)} <span style="color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:4px" onclick="subThemeOpenSet(${i})">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`;
+            return `
           <tr id="revrow-${i}">
-            <td style="font-weight:600;font-size:12px;min-width:130px">
-              ${isYearEditable(activeYear)?`<input class="fi-inline" value="${esc(s.label)}">`:`<span>${esc(s.label)}</span>`}
-            </td>
-            <td style="white-space:nowrap">
-              <span class="chip" style="font-size:11px;background:var(--teal-bg);color:var(--teal);border-color:var(--teal-bd)">${esc(_domL0n)}</span>
-            </td>
-            <td style="white-space:nowrap"><span class="chip" style="font-size:11px">${esc(_segL0[i].l0n)}</span></td>
-            <td style="font-size:12px;color:var(--txt2)">${esc(s.l1n)}</td>
-            <td>
-              <div style="font-size:12px">${esc(s.l2n)}</div>
-              <div class="mono" style="font-size:10px;color:var(--txt3)">${s.l2}</div>
-            </td>
-            <td class="mono" style="font-size:12px">${fmtNum(s.rev||0)}</td>
-            <td>
-              <span class="mono" style="font-size:12px;font-weight:600">${s.pct.toFixed(1)}%</span>
-            </td>
-            <td>${revBadge(s.cls)}</td>
+            <td style="font-weight:600;font-size:12px;min-width:130px">${labelCell}</td>
+            <td class="mono" style="font-size:12px">${revCell}</td>
+            <td>${pctCell}</td>
+            <td>${clsCell}</td>
+            <td style="white-space:nowrap">${finalSectorCell}</td>
+            <td style="white-space:nowrap">${sectorCell}</td>
+            <td>${themeCell}</td>
+            <td>${subThemeCell}</td>
             <td>${s.pg?`<span class="page-ref" onclick="gotoPage(${s.pg})">p.${s.pg}</span>`:`<span style="color:var(--txt3);font-size:11px">—</span>`}</td>
-            ${isYearEditable(activeYear)?`<td><button class="btn btn-danger btn-xs" onclick="document.getElementById('revrow-${i}').remove()">✕</button></td>`:''}
-          </tr>`).join('')
+            ${isYearEditable(activeYear)?`<td><button class="btn btn-danger btn-xs" onclick="document.getElementById('revrow-${i}').remove();recalcAllPercentages()">✕</button></td>`:''}
+          </tr>`;}).join('')
           : `<tr><td colspan="${isYearEditable(activeYear)?10:9}" style="text-align:center;padding:18px;color:var(--txt3);font-size:12.5px">No segments for FY${activeYear}${isYearEditable(activeYear)?' — use <strong>+ Add Segment</strong> below':''}</td></tr>`}
         </tbody>
       </table>
     </div>`;
+
 
     // AUDIT TAB
     const coAudit = AUDIT.filter(a=>a.co===w.coName);
@@ -3526,7 +3674,7 @@ function renderCompanyReport(wbId) {
     <div class="split-form">
       <!-- Action Bar — role-specific actions (TOP) -->
       <div class="split-form-bar" id="action-bar" style="border-bottom:1px solid var(--border);border-top:none">
-        ${buildRoleActionBar(w, isEditable, activeFormTab)}
+        ${buildRoleActionBar(w, isEditable, activeFormTab, activeYear)}
       </div>
       <div class="split-form-scroll" id="form-panel">${buildForm()}</div>
     </div>
@@ -3561,6 +3709,9 @@ function renderCompanyReport(wbId) {
   window.addRevRow = () => {
     const tbody = document.getElementById('rev-tbody');
     if (!tbody) { switchFormTab('revenue'); return; }
+    // Remove the "No segments for FYxxxx" placeholder row, if present, before adding the first real row
+    const placeholder = Array.from(tbody.querySelectorAll('tr')).find(tr => !tr.id);
+    if (placeholder) placeholder.remove();
     const idx = tbody.querySelectorAll('tr').length;
     const l0opts2 = TAX.L0.map(x=>`<option value="${x.c}|${x.n}">${x.c} — ${x.n}</option>`).join('');
     const l1opts2 = TAX.L1.map(x=>`<option value="${x.c}|${x.n}|${x.l0}">${x.c} — ${x.n} (Sector:${x.l0})</option>`).join('');
@@ -3569,21 +3720,22 @@ function renderCompanyReport(wbId) {
     tr.id = `revrow-new-${idx}`;
     tr.innerHTML = `
       <td><input class="fi" style="min-width:110px;padding:4px 7px" placeholder="Segment label…"></td>
+      <td><input class="fi rc-rev-input" style="width:75px;padding:4px 7px" type="number" step="0.1" placeholder="Amount" oninput="recalcAllPercentages()"></td>
+      <td><span class="mono rc-pct-display" style="font-size:12px;font-weight:600">0.0%</span></td>
+      <td><span class="rc-cls-display">${revBadge('Marginal')}</span><div style="font-size:9.5px;color:var(--txt3);margin-top:2px">auto · by Revenue %</div></td>
       <td style="font-size:11px;color:var(--txt3);padding:4px 8px">—</td>
       <td><select class="fs" style="padding:4px 7px;min-width:135px">${l0opts2}</select></td>
       <td><select class="fs" style="padding:4px 7px;min-width:150px">${l1opts2}</select></td>
       <td><select class="fs" style="padding:4px 7px;min-width:160px">${l2opts2}</select></td>
-      <td><input class="fi" style="width:75px;padding:4px 7px" type="number" placeholder="Amount"></td>
-      <td><input class="fi" style="width:55px;padding:4px 7px" type="number" min="0" max="100" step="0.1" placeholder="%"></td>
-      <td><select class="fs" style="padding:4px 7px"><option>Pure Play</option><option>Quasi</option><option>Marginal</option></select></td>
       <td><input class="fi" style="width:55px;padding:4px 7px" type="number" placeholder="Page"></td>
-      <td><button class="btn btn-danger btn-xs" onclick="this.closest('tr').remove()">✕</button></td>`;
+      <td><button class="btn btn-danger btn-xs" onclick="this.closest('tr').remove();recalcAllPercentages()">✕</button></td>`;
     tbody.appendChild(tr);
     tbody.closest('.split-form-scroll')?.scrollTo({top:99999,behavior:'smooth'});
+    recalcAllPercentages();
   };
   function rebindActionBar() {
     const bar = document.getElementById('action-bar');
-    if (bar) bar.innerHTML = buildRoleActionBar(w, isEditable, activeFormTab);
+    if (bar) bar.innerHTML = buildRoleActionBar(w, isEditable, activeFormTab, activeYear);
   }
   window.addNewYear = yr => {
     if (!(w.pendingYears||[]).includes(yr) && !(w.yearsGC||[]).includes(yr)) {
@@ -3601,8 +3753,395 @@ function renderCompanyReport(wbId) {
       detail:`Draft saved for FY${activeYear}.`});
     toast('Draft saved.','ok');
   };
+
+  let _subThemeRowIdx = null;
+  let _subThemeOriginalL2 = null;
+
+  function getSuggestedSubThemes(seg) {
+    const top = TAX.L2.find(x=>x.c===seg.l2);
+    if (!top) return [];
+    const siblings = TAX.L2.filter(x=>x.l1===top.l1 && x.c!==top.c).slice(0,2);
+    const confidences = [91, 58, 34];
+    const list = [{c:top.c, n:top.n, conf:confidences[0]}];
+    siblings.forEach((sib,sidx)=> list.push({c:sib.c, n:sib.n, conf:confidences[sidx+1]||20}));
+    return list;
+  }
+
+  // ── Gate 1: Classification data (AR Classification / Revenue / Revenue % / Revenue Class) — whole table ──
+  // ── Shared persistence for the Revenue Segmentation table ───
+  // Reads every row currently in the table — existing AR Classification rows (corrected or not) AND
+  // any brand-new rows added via "+ Segment" — so neither flow silently drops what the analyst entered.
+  function gatherSegmentRows() {
+    const tbody = document.getElementById('rev-tbody');
+    if (!tbody) return [];
+    const d = getSegData();
+    const trs = Array.from(tbody.querySelectorAll('tr')).filter(tr => tr.id && tr.id.indexOf('revrow') === 0);
+    return trs.map(tr => {
+      if (tr.id.indexOf('revrow-new-') === 0) {
+        const inputs = tr.querySelectorAll('input');
+        const selects = tr.querySelectorAll('select');
+        const label = inputs[0] ? inputs[0].value.trim() : '';
+        const rev   = inputs[1] ? (parseFloat(inputs[1].value)||0) : 0;
+        const pg    = inputs[2] ? (parseInt(inputs[2].value,10)||0) : 0;
+        const l2Val = (selects[2] && selects[2].value) || '';
+        const l2Parts = l2Val.split('|');
+        const l2c = l2Parts[0] || '';
+        const l2e = TAX.L2.find(x=>x.c===l2c);
+        const l1e = l2e ? TAX.L1.find(x=>x.c===l2e.l1) : null;
+        return {
+          isNew: true, label, rev, pg,
+          l1: l1e ? l1e.c : '', l1n: l1e ? l1e.n : '',
+          l2: l2c, l2n: l2e ? l2e.n : (l2Parts[1]||''),
+        };
+      }
+      const m = tr.id.match(/^revrow-(\d+)$/);
+      const idx = m ? parseInt(m[1],10) : -1;
+      const orig = idx>=0 ? d.segments[idx] : null;
+      if (!orig) return null;
+      const labelEl = tr.querySelector('#cls-label-'+idx);
+      const revEl   = tr.querySelector('#cls-rev-'+idx);
+      return {
+        isNew: false, origIdx: idx,
+        label: labelEl ? (labelEl.value.trim() || orig.label) : orig.label,
+        rev:   revEl   ? (parseFloat(revEl.value)||0) : orig.rev,
+        pg: orig.pg, l1: orig.l1, l1n: orig.l1n, l2: orig.l2, l2n: orig.l2n, llm: orig.llm,
+      };
+    }).filter(Boolean);
+  }
+  // Recomputes %/Class from Revenue share across every row, then persists to CLSDATA.
+  // New rows are immediately finalized for Sub-Theme review (the analyst already chose the taxonomy
+  // when adding them). Existing rows keep their prior Sub-Theme decision unless resetExistingGate is set
+  // (used when corrected data invalidates prior Sub-Theme suggestions and they need a fresh look).
+  function applySegmentRows(raw, opts) {
+    opts = opts || {};
+    const total = raw.reduce((a,r)=>a+r.rev, 0);
+    const newSegments = raw.map(r => {
+      const pct = total > 0 ? (r.rev/total*100) : 0;
+      return {
+        label: r.label, rev: r.rev, pct, cls: computeRevenueClass(pct),
+        l1: r.l1, l1n: r.l1n, l2: r.l2, l2n: r.l2n, pg: r.pg,
+        llm: r.isNew ? false : (r.llm !== undefined ? r.llm : true),
+      };
+    });
+    const d = getSegData();
+    CLSDATA[w.coId] = CLSDATA[w.coId] || {};
+    CLSDATA[w.coId][activeYear] = { l0: d.l0, segments: newSegments };
+
+    const oldGate = (w.subThemeGate||{})[activeYear] || {};
+    const newGate = {};
+    raw.forEach((r, newIdx) => {
+      if (r.isNew) {
+        newGate[newIdx] = { status:'finalized', originalL2:r.l2, changed:false, reason:null, ts:new Date().toISOString(), by:currentUser.name };
+      } else if (opts.resetExistingGate) {
+        newGate[newIdx] = { status:'pending', originalL2:r.l2 };
+      } else {
+        newGate[newIdx] = oldGate[r.origIdx] || { status:'pending', originalL2:r.l2 };
+      }
+    });
+    w.subThemeGate = w.subThemeGate || {};
+    w.subThemeGate[activeYear] = newGate;
+
+    return { addedCount: raw.filter(r=>r.isNew).length, total };
+  }
+  function commitSegmentChanges(opts) {
+    return applySegmentRows(gatherSegmentRows(), opts);
+  }
+
+  window.saveSegmentEdits = function() {
+    const tbody = document.getElementById('rev-tbody');
+    if (!tbody) { toast('Open the Revenue Segmentation tab first.','err'); return; }
+    const result = commitSegmentChanges();
+    document.getElementById('form-panel').innerHTML = buildForm();
+    rebindActionBar();
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Saved Segment Edits',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — segments saved.${result.addedCount?` ${result.addedCount} new segment(s) added.`:''}`});
+    toast(result.addedCount ? `Segments saved ✓ — ${result.addedCount} new segment${result.addedCount>1?'s':''} added.` : 'Segments saved ✓.', 'ok');
+  };
+
+  window.clsGateAccept = function() {
+    const result = commitSegmentChanges();
+    const d = getSegData();
+    w.clsGate = w.clsGate || {};
+    w.clsGate[activeYear] = { status:'accepted', ts:new Date().toISOString(), by:currentUser.name };
+    DECISIONLOG.unshift({
+      id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
+      analyst:currentUser.name, decision:'accepted', issueType:'classification', reason:null,
+      segmentsAtDecision: JSON.parse(JSON.stringify(d.segments||[])),
+      ts:new Date().toISOString()
+    });
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Accepted Classification Data',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — AR Classification, Revenue, Revenue % and Revenue Class confirmed correct.${result.addedCount?` ${result.addedCount} new segment(s) added.`:''}`});
+    document.getElementById('form-panel').innerHTML = buildForm();
+    rebindActionBar();
+    toast(result.addedCount ? `Classification confirmed ✓ — ${result.addedCount} new segment saved. Review each Sub-Theme below.` : 'Classification confirmed ✓ — review each Sub-Theme below.', 'ok');
+  };
+
+  window.clsGateOpenReject = function() {
+    showModal(`
+    <div class="m-hd">
+      <div><div class="m-title">Reject Classification Data — ${esc(w.coName)}</div><div class="m-sub">${esc(w.isin)} · FY${activeYear}</div></div>
+      <button class="m-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="fg">
+        <label class="fl">Issue Category <span class="req">*</span></label>
+        <select class="fs" id="cls-reject-label" style="width:100%" onchange="clsGateValidateReject()">
+          <option value="">— Select issue category —</option>
+          ${CLS_ISSUE_LABELS.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">What's wrong with the AR Classification, Revenue, Revenue % or Revenue Class? <span class="req">*</span></label>
+        <textarea class="ft" id="cls-reject-reason" style="min-height:90px" placeholder="Explain exactly what is wrong and why — this is stored to analyze decision patterns and improve accuracy over time. E.g. 'Page 22 lists Data Center revenue as $47.5B but the table here shows $43.1B — footnote 4B figure was missed.'" oninput="clsGateValidateReject()"></textarea>
+        <div id="cls-reject-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px">Select an issue category, then describe it — minimum 30 characters and 6 words.</div>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-danger" id="cls-reject-confirm" disabled onclick="clsGateConfirmReject()">Confirm Rejection</button>
+    </div>`, 'm-md');
+  };
+
+  window.clsGateValidateReject = function() {
+    const labelEl = document.getElementById('cls-reject-label');
+    const reasonEl = document.getElementById('cls-reject-reason');
+    const btn = document.getElementById('cls-reject-confirm');
+    const help = document.getElementById('cls-reject-help');
+    if (!labelEl || !reasonEl || !btn || !help) return;
+    const labelChosen = !!labelEl.value;
+    const v = validateReasonText(reasonEl.value);
+    btn.disabled = !(labelChosen && v.valid);
+    if (!labelChosen) {
+      help.textContent = 'Select an issue category, then describe it below (min. 30 characters, 6 words).';
+      help.style.color = 'var(--txt3)';
+    } else {
+      help.textContent = v.message;
+      help.style.color = v.valid ? 'var(--green)' : 'var(--amber)';
+    }
+  };
+
+  window.clsGateConfirmReject = function() {
+    const issueLabel = document.getElementById('cls-reject-label')?.value;
+    const reason = document.getElementById('cls-reject-reason')?.value.trim();
+    if (!issueLabel || !reason) return;
+    const d = getSegData();
+    w.clsGate = w.clsGate || {};
+    w.clsGate[activeYear] = { status:'rejected', issueLabel, reason, ts:new Date().toISOString(), by:currentUser.name };
+    DECISIONLOG.unshift({
+      id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
+      analyst:currentUser.name, decision:'rejected', issueType:'classification', issueLabel, reason,
+      segmentsAtDecision: JSON.parse(JSON.stringify(d.segments||[])),
+      ts:new Date().toISOString()
+    });
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Rejected Classification Data',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — flagged Classification data issue [${issueLabel}]: ${reason}`});
+    closeModal();
+    document.getElementById('form-panel').innerHTML = buildForm();
+    rebindActionBar();
+    toast('Marked for correction — edit the values below, then re-suggest Sub-Themes.','warn');
+  };
+
+  // Revenue % is always derived from each row's share of total Revenue (never typed in directly).
+  // Revenue Class then follows automatically from that %. Recomputes live across the whole table —
+  // existing editable rows, newly added "+ Segment" rows, and the Total Revenue % indicator — whenever
+  // any Revenue amount changes. Rows not currently being edited keep their stored % as the input here
+  // until something changes; their Class badge is left untouched unless they're in an editable state.
+  window.recalcAllPercentages = function() {
+    const tbody = document.getElementById('rev-tbody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr')).filter(tr => tr.id && tr.id.indexOf('revrow') === 0);
+    const revenues = rows.map(tr => {
+      const inputEl = tr.querySelector('.rc-rev-input');
+      if (inputEl) return parseFloat(inputEl.value) || 0;
+      const staticEl = tr.querySelector('.rc-rev-static');
+      if (staticEl) return parseFloat(staticEl.getAttribute('data-rev')) || 0;
+      return 0;
+    });
+    const total = revenues.reduce((a,b)=>a+b, 0);
+    const incompleteCount = revenues.filter(r => !(r > 0)).length;
+    rows.forEach((tr, idx) => {
+      const pct = total > 0 ? (revenues[idx]/total*100) : 0;
+      const pctEl = tr.querySelector('.rc-pct-display');
+      if (pctEl) pctEl.textContent = pct.toFixed(1)+'%';
+      const clsEl = tr.querySelector('.rc-cls-display');
+      if (clsEl) clsEl.innerHTML = revBadge(computeRevenueClass(pct));
+    });
+    const totalPct = rows.length ? (total>0 ? 100 : 0) : 0;
+    const totalEl = document.getElementById('revtotal-value');
+    const badgeEl = document.getElementById('revtotal-badge');
+    if (totalEl) totalEl.textContent = totalPct.toFixed(1)+'%';
+    if (badgeEl) badgeEl.innerHTML = totalPctBadgeHTML(totalPct, incompleteCount);
+  };
+
+  window.clsGateRetrigger = function() {
+    const d = getSegData();
+    const before = JSON.parse(JSON.stringify(d.segments||[]));
+    // Read the whole table now, synchronously — existing corrected rows AND any new "+ Segment" rows —
+    // so the wait doesn't depend on the DOM still being there later
+    const rawRows = gatherSegmentRows();
+
+    // Show a processing state immediately
+    const btn = document.getElementById('cls-retrigger-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Running Sub-Theme suggestions…'; }
+    const banner = document.getElementById('cls-gate-banner');
+    if (banner) {
+      banner.innerHTML = `<div class="rej-hdr">Re-running Sub-Theme Suggestions</div>
+        <div style="font-size:12.5px;display:flex;align-items:center;gap:8px">
+          <span style="display:inline-block;width:13px;height:13px;border:2px solid var(--red-bd);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite"></span>
+          Re-classifying corrected segments against the taxonomy…
+        </div>`;
+    }
+
+    const delayMs = 5000 + Math.random()*2000; // 5-7s, simulates the Mapping service re-running
+    setTimeout(() => {
+      const result = applySegmentRows(rawRows, { resetExistingGate: true });
+      const rv = (w.clsGate||{})[activeYear] || {};
+      w.clsGate[activeYear] = Object.assign({}, rv, { status:'accepted', correctedTs:new Date().toISOString() });
+      const dAfter = getSegData();
+      DECISIONLOG.unshift({
+        id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
+        analyst:currentUser.name, decision:'classification_corrected', issueType:'classification',
+        issueLabel: rv.issueLabel||null, reason: rv.reason||'', segmentsBefore:before, segmentsAfter:JSON.parse(JSON.stringify(dAfter.segments||[])),
+        ts:new Date().toISOString()
+      });
+      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Corrected Classification Data',
+        co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+        detail:`FY${activeYear} — Classification data corrected; Sub-Theme suggestions re-run.${result.addedCount?` ${result.addedCount} new segment(s) added.`:''}`});
+      const panel = document.getElementById('form-panel');
+      if (panel) panel.innerHTML = buildForm();
+      rebindActionBar();
+      toast('Classification corrected ✓ — fresh Sub-Theme suggestions are ready for review.','ok');
+    }, delayMs);
+  };
+
+  // ── Gate 2: Sub-Theme — per row, finalized one by one via "Set" ──
+  window.subThemeOpenSet = function(idx) {
+    if (w.llm && getClsGateStatus(w, activeYear) !== 'accepted') {
+      toast('Confirm the Classification data above first.','err'); return;
+    }
+    const d = getSegData();
+    const seg = d.segments[idx];
+    if (!seg) return;
+    _subThemeRowIdx = idx;
+    _subThemeOriginalL2 = seg.l2;
+    const suggestions = getSuggestedSubThemes(seg);
+    showModal(`
+    <div class="m-hd">
+      <div><div class="m-title">Set Sub-Theme — ${esc(seg.label)}</div><div class="m-sub">${esc(w.coName)} · FY${activeYear}</div></div>
+      <button class="m-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="fg">
+        <label class="fl">AI-Suggested Sub-Themes</label>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${suggestions.map(s=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer">
+              <input type="radio" name="sub-pick" value="${s.c}" ${s.c===seg.l2?'checked':''} onchange="subThemePickChange()">
+              <span style="font-size:12.5px;font-weight:600">${esc(s.n)}</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--txt3);font-family:var(--mono)">(${s.conf}%)</span>
+            </label>`).join('')}
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">Not in the list? Choose from the full taxonomy</label>
+        <select class="fs" id="sub-fulllist" onchange="document.querySelectorAll('input[name=sub-pick]').forEach(function(r){r.checked=false;});subThemePickChange()">
+          <option value="">— Search all sub-themes —</option>
+          ${TAX.L2.map(x=>`<option value="${x.c}">${esc(x.n)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg" id="sub-reason-wrap" style="display:none">
+        <label class="fl">Why are you changing this? <span class="req">*</span></label>
+        <textarea class="ft" id="sub-reason" oninput="subThemeValidate()" placeholder="Explain why the suggested Sub-Theme is wrong and why your choice is correct — cite the AR page or segment description. Minimum 30 characters, 6 words."></textarea>
+        <div id="sub-reason-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px"></div>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" id="sub-confirm-btn" onclick="subThemeConfirm()">Confirm</button>
+    </div>`, 'm-md');
+  };
+
+  window.subThemePickChange = function() {
+    const picked = (document.querySelector('input[name="sub-pick"]:checked')||{}).value || (document.getElementById('sub-fulllist')||{}).value || '';
+    const wrap = document.getElementById('sub-reason-wrap');
+    const btn = document.getElementById('sub-confirm-btn');
+    if (!wrap || !btn) return;
+    const isChanged = picked && picked !== _subThemeOriginalL2;
+    wrap.style.display = isChanged ? 'block' : 'none';
+    if (!picked) { btn.disabled = true; return; }
+    if (!isChanged) { btn.disabled = false; }
+    else { subThemeValidate(); }
+  };
+
+  window.subThemeValidate = function() {
+    const reasonEl = document.getElementById('sub-reason');
+    const btn = document.getElementById('sub-confirm-btn');
+    const help = document.getElementById('sub-reason-help');
+    if (!reasonEl || !btn || !help) return;
+    const v = validateReasonText(reasonEl.value);
+    btn.disabled = !v.valid;
+    help.textContent = v.message;
+    help.style.color = v.valid ? 'var(--green)' : 'var(--amber)';
+  };
+
+  window.subThemeConfirm = function() {
+    const idx = _subThemeRowIdx;
+    if (idx===null || idx===undefined) return;
+    const picked = (document.querySelector('input[name="sub-pick"]:checked')||{}).value || (document.getElementById('sub-fulllist')||{}).value || '';
+    if (!picked) return;
+    const isChanged = picked !== _subThemeOriginalL2;
+    const reason = isChanged ? (document.getElementById('sub-reason')||{}).value : null;
+    const reasonTrimmed = reason ? reason.trim() : null;
+    if (isChanged && !reasonTrimmed) return;
+    const d = getSegData();
+    const seg = d.segments[idx];
+    if (!seg) return;
+    const before = JSON.parse(JSON.stringify(seg));
+    const l2e = TAX.L2.find(x=>x.c===picked);
+    const l1e = l2e ? TAX.L1.find(x=>x.c===l2e.l1) : null;
+    seg.l2 = picked;
+    seg.l2n = l2e ? l2e.n : picked;
+    seg.l1 = l1e ? l1e.c : seg.l1;
+    seg.l1n = l1e ? l1e.n : seg.l1n;
+    w.subThemeGate = w.subThemeGate || {};
+    w.subThemeGate[activeYear] = w.subThemeGate[activeYear] || {};
+    w.subThemeGate[activeYear][idx] = { status:'finalized', originalL2:_subThemeOriginalL2, changed:isChanged, reason:reasonTrimmed, ts:new Date().toISOString(), by:currentUser.name };
+    DECISIONLOG.unshift({
+      id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
+      analyst:currentUser.name, decision: isChanged ? 'subtheme_changed' : 'subtheme_confirmed', issueType:'subtheme',
+      reason: reasonTrimmed, segmentBefore:before, segmentAfter:JSON.parse(JSON.stringify(seg)),
+      ts:new Date().toISOString()
+    });
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action: isChanged?'Changed Sub-Theme':'Confirmed Sub-Theme',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail: isChanged ? `FY${activeYear} — "${seg.label}" Sub-Theme changed to ${seg.l2n}: ${reasonTrimmed}` : `FY${activeYear} — "${seg.label}" Sub-Theme confirmed as ${seg.l2n}.`});
+    closeModal();
+    document.getElementById('form-panel').innerHTML = buildForm();
+    rebindActionBar();
+    toast(isChanged ? 'Sub-Theme updated ✓ — Theme and Sector filled in.' : 'Sub-Theme confirmed ✓ — Theme and Sector filled in.', 'ok');
+  };
+
   window.submitForQC = id => {
     const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
+    if (wb.llm && !isYearFullyResolved(wb, activeYear)) {
+      toast('Confirm the Classification data and Sub-Theme review before submitting for QC.','err'); return;
+    }
+    const dCheck = (CLSDATA[wb.coId]||{})[activeYear];
+    if (dCheck && dCheck.segments && dCheck.segments.length) {
+      const zeroRevCount = dCheck.segments.filter(s=>!(s.rev>0)).length;
+      if (zeroRevCount>0) {
+        toast(`${zeroRevCount} segment${zeroRevCount>1?'s':''} ${zeroRevCount>1?'are':'is'} missing a Revenue figure — fill ${zeroRevCount>1?'these':'it'} in before submitting.`,'err'); return;
+      }
+      const totalPctCheck = dCheck.segments.reduce((a,s)=>a+(s.pct||0), 0);
+      if (Math.abs(totalPctCheck-100) > 0.5) {
+        toast(`Total Revenue % is ${totalPctCheck.toFixed(1)}% — segments must sum to 100% before submitting.`,'err'); return;
+      }
+    }
     const note = document.getElementById('analyst-note')?.value.trim() || '';
     if (!wb.yearsGC.includes(activeYear)) wb.yearsGC = [...wb.yearsGC,activeYear].sort();
     wb.pendingYears = (wb.pendingYears||[]).filter(y=>y!==activeYear);
@@ -5138,6 +5677,7 @@ function renderAutomation() {
   }
   function triggerBulk(body)     { return apiFetch(API_PREFIX+'/bulk/',     { method:'POST', body:JSON.stringify(body) }); }
   function triggerTargeted(body) { return apiFetch(API_PREFIX+'/targeted/', { method:'POST', body:JSON.stringify(body) }); }
+  function triggerAgent(body)    { return apiFetch(API_PREFIX+'/agent/',    { method:'POST', body:JSON.stringify(body) }); }
   function fetchJobs(from, to) {
     const p = new URLSearchParams();
     if (from) p.set('from_date', from);
@@ -5212,6 +5752,14 @@ function renderAutomation() {
       created_by:'ops@indxx.com', created_at:'2026-03-29T14:20:00.000000Z',
       updated_at:'2026-03-29T14:20:05.000000Z', completed_at:'2026-03-29T14:20:05.000000Z',
       logs:[{id:300,event_type:'DOWNLOAD_FAILED',level:'ERROR',fiscal_year:null,source:'django_api',details:{error:'SQS queue unreachable. Job failed at creation.'},created_at:'2026-03-29T14:20:05.000000Z'}]},
+    { job_id:'56f286a3-8146-4035-b8fe-4f1965004b2c', job_type:'agent', status:'complete', country_code:'JP',
+      fiscal_year:null, total_expected:1, total_success:1, total_failed:0, total_skipped:0,
+      created_by:'rm@indxx.com', created_at:'2026-03-31T09:48:36.000000Z',
+      updated_at:'2026-03-31T09:48:41.000000Z', completed_at:'2026-03-31T09:48:41.000000Z',
+      logs:[
+        {id:400,event_type:'SCHEDULED_RUN_STARTED',level:'INFO',fiscal_year:null,source:'agent_service',details:{job_id:'56f286a3-8146-4035-b8fe-4f1965004b2c',trigger:'agent',ticker_region:'9897',country_code:'JP',year:2024,report_type:'semi-annual',period:'H2'},created_at:'2026-03-31T09:48:39.000000Z'},
+        {id:401,event_type:'DOWNLOAD_SUCCESS',level:'INFO',fiscal_year:2024,source:'agent_service',details:{s3_key:'reports/JP/9897/2024_H2.pdf',file_size_bytes:166400,report_type:'semi-annual',period:'H2'},created_at:'2026-03-31T09:48:40.000000Z'},
+      ]},
   ];
 
   // ── Render shell ─────────────────────────────────────────
@@ -5232,7 +5780,6 @@ function renderAutomation() {
       font-family:var(--font);transition:all .15s; }
     .dl-pill { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;
       background:var(--bg3);font-size:10px;font-family:var(--mono);color:var(--txt2); }
-    @keyframes dl-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
     @keyframes dl-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
   </style>
   <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);">
@@ -5246,6 +5793,10 @@ function renderAutomation() {
       <button id="dlTabTargeted" onclick="dlSwitchTab('targeted')"
         style="padding:11px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .15s;letter-spacing:.3px;">
         ◎ Targeted Download
+      </button>
+      <button id="dlTabAgent" onclick="dlSwitchTab('agent')"
+        style="padding:11px 20px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--txt3);transition:all .15s;letter-spacing:.3px;">
+        ✨ Agent Download
       </button>
     </div>
 
@@ -5286,7 +5837,7 @@ function renderAutomation() {
   // ── Tab switching ────────────────────────────────────────
   window.dlSwitchTab = function(tab) {
     window._dlTab = tab;
-    ['bulk','targeted'].forEach(t => {
+    ['bulk','targeted','agent'].forEach(t => {
       const btn = document.getElementById('dlTab'+t.charAt(0).toUpperCase()+t.slice(1));
       if (btn) {
         btn.style.color = t===tab ? 'var(--blue)' : 'var(--txt3)';
@@ -5334,7 +5885,7 @@ function renderAutomation() {
             <span id="dlTrigMsg" style="font-size:11px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
           </div>
         </div>`;
-    } else {
+    } else if (tab === 'targeted') {
       // Reuse bulkCountryOptions already built above
       const countryOptions = bulkCountryOptions;
 
@@ -5366,8 +5917,91 @@ function renderAutomation() {
             <span id="dlTrigMsg" style="font-size:11px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
           </div>
         </div>`;
+    } else {
+      // Agent Download — single ticker/year/period, routed to the Agent service rather than the
+      // standard Download Service. Handles Semi-Annual/Quarterly-reporting geographies, and also serves
+      // as the fallback path for Annual filings the standard Download Service couldn't fetch.
+      panel.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
+          <div>
+            <label class="dl-lbl">Country Code</label>
+            <select class="dl-input" id="dlACountry" style="cursor:pointer;" onchange="dlUpdateAgentPreview()">
+              <option value="">— Select country —</option>
+              ${bulkCountryOptions}
+            </select>
+          </div>
+          <div>
+            <label class="dl-lbl">Ticker</label>
+            <input class="dl-input" id="dlATicker" placeholder="e.g. 9897" oninput="dlUpdateAgentPreview()">
+          </div>
+          <div>
+            <label class="dl-lbl">Year</label>
+            <input class="dl-input" id="dlAYear" type="number" min="2017" max="${CURRENT_YEAR}" value="${CURRENT_YEAR}" oninput="dlUpdateAgentPreview()">
+          </div>
+          <div>
+            <label class="dl-lbl">Report Type</label>
+            <select class="dl-input" id="dlAReportType" onchange="dlOnReportTypeChange()" style="cursor:pointer;">
+              <option value="annual">Annual</option>
+              <option value="semi-annual">Semi-Annual</option>
+              <option value="quarterly">Quarterly</option>
+            </select>
+          </div>
+          <div>
+            <label class="dl-lbl">Period</label>
+            <select class="dl-input" id="dlAPeriod" disabled style="cursor:pointer;color:var(--txt3);" onchange="dlUpdateAgentPreview()">
+              <option value="">N/A</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="dl-btn-primary" id="dlTriggerBtn" onclick="dlTrigger()">Trigger Job</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap;">
+          <span id="dlAHelp" style="font-size:10.5px;color:var(--txt3);">Period is only needed for Semi-Annual or Quarterly reports.</span>
+          <span id="dlTrigMsg" style="font-size:11px;"></span>
+        </div>
+        <div style="margin-top:10px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:10px 12px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt3);margin-bottom:6px;font-family:var(--mono);">Request Body — POST /api/v1/downloads/agent/</div>
+          <pre id="dlAPreview" style="margin:0;font-family:var(--mono);font-size:11px;color:var(--green);white-space:pre-wrap;"></pre>
+        </div>`;
+      dlUpdateAgentPreview();
     }
   }
+
+  // ── Agent Download: Report Type → Period options, live request preview ──
+  window.dlOnReportTypeChange = function() {
+    const rt = document.getElementById('dlAReportType')?.value;
+    const periodSel = document.getElementById('dlAPeriod');
+    const help = document.getElementById('dlAHelp');
+    if (!periodSel) return;
+    if (rt === 'semi-annual') {
+      periodSel.innerHTML = '<option value="H1">H1</option><option value="H2">H2</option>';
+      periodSel.disabled = false;
+      periodSel.style.color = 'var(--txt)';
+      if (help) help.textContent = 'Required — which instance within the year (Year above already covers the year itself).';
+    } else if (rt === 'quarterly') {
+      periodSel.innerHTML = '<option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>';
+      periodSel.disabled = false;
+      periodSel.style.color = 'var(--txt)';
+      if (help) help.textContent = 'Required — which instance within the year (Year above already covers the year itself).';
+    } else {
+      periodSel.innerHTML = '<option value="">N/A</option>';
+      periodSel.disabled = true;
+      periodSel.style.color = 'var(--txt3)';
+      if (help) help.textContent = 'Period is only needed for Semi-Annual or Quarterly reports.';
+    }
+    dlUpdateAgentPreview();
+  };
+  window.dlUpdateAgentPreview = function() {
+    const pre = document.getElementById('dlAPreview');
+    if (!pre) return;
+    const country = (document.getElementById('dlACountry')?.value||'').trim().toUpperCase();
+    const ticker  = (document.getElementById('dlATicker')?.value||'').trim().toUpperCase();
+    const year    = parseInt(document.getElementById('dlAYear')?.value) || CURRENT_YEAR;
+    const reportType = document.getElementById('dlAReportType')?.value || 'annual';
+    const period  = document.getElementById('dlAPeriod')?.value || '';
+    pre.textContent = JSON.stringify({ ticker_region: ticker, country_code: country, year, report_type: reportType, period }, null, 2);
+  };
 
   // ── Country change → repopulate ticker dropdown ──────────
   window.dlOnCountryChange = function() {
@@ -5407,57 +6041,116 @@ function renderAutomation() {
       tickerSel.style.color = 'var(--txt3)';
       return;
     }
-    filtered.sort((a,b) => (a.ticker||a.name).localeCompare(b.ticker||b.name));
-    tickerSel.innerHTML = '<option value="">— Select ticker —</option>' +
+    filtered.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    tickerSel.innerHTML = '<option value="">— Select security —</option>' +
       filtered.map(c => {
-        const label = c.ticker ? c.ticker : c.name;
+        const label = c.ticker ? `${c.name} (${c.ticker})` : c.name;
         const val   = c.ticker || c.isin;
-        return `<option value="${val}">${label}</option>`;
+        return `<option value="${val}">${esc(label)}</option>`;
       }).join('');
     tickerSel.disabled = false;
     tickerSel.style.color = 'var(--txt)';
   };
+
+  // Generates a UUID-v4-looking id for locally-simulated jobs (this prototype has no live backend)
+  function genJobId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+      return v.toString(16);
+    });
+  }
+  // Builds a believable job record from whatever was just submitted, so it can be prepended to
+  // Job History immediately — triggering is manual-only now, no background/scheduled jobs to wait on.
+  function mockJobFromTrigger(tab, body, jobId) {
+    const now = new Date().toISOString();
+    let totalExpected;
+    if (tab === 'bulk') totalExpected = (body.to_year-body.from_year+1) * (body.country_code ? 6 : 30);
+    else if (tab === 'targeted') totalExpected = (body.to_year-body.from_year+1);
+    else totalExpected = 1;
+    return {
+      job_id: jobId, job_type: tab, status: 'running',
+      country_code: body.country_code || null, fiscal_year: null,
+      total_expected: totalExpected, total_success: 0, total_failed: 0, total_skipped: 0,
+      created_by: 'analyst@indxx.com', created_at: now, updated_at: now, completed_at: null,
+      logs: [{ id: Date.now(), event_type:'JOB_STARTED', level:'INFO', fiscal_year:null, source:'django_api',
+        details: Object.assign({ job_id: jobId, trigger: tab, fanned_out: totalExpected }, body), created_at: now }]
+    };
+  }
+  // Resolves a "running" job to "complete" shortly after creation, in place, wherever it sits in the list
+  function dlSimulateJobCompletion(jobId) {
+    setTimeout(() => {
+      const job = (window._dlJobs||[]).find(x=>x.job_id===jobId);
+      if (!job) return;
+      const total = job.total_expected || 1;
+      const fail = Math.random()<0.2 ? Math.min(total, 1+Math.floor(Math.random()*2)) : 0;
+      const skip = Math.floor(Math.random()*Math.max(0,total-fail)*0.15);
+      const success = Math.max(0, total-fail-skip);
+      job.status = 'complete';
+      job.total_success = success; job.total_failed = fail; job.total_skipped = skip;
+      job.updated_at = new Date().toISOString();
+      job.completed_at = job.updated_at;
+      job.logs.push({ id: Date.now()+1, event_type:'JOB_COMPLETE', level:'INFO', fiscal_year:null, source:'orchestrator_lambda',
+        details:{ summary: `${success} succeeded, ${fail} failed, ${skip} skipped` }, created_at: job.updated_at });
+      dlUpdateStats(window._dlJobs);
+      dlRenderJobList(window._dlJobs);
+    }, 2200 + Math.random()*1800);
+  }
 
   // ── Trigger job ──────────────────────────────────────────
   window.dlTrigger = async function() {
     const btn = document.getElementById('dlTriggerBtn');
     const msg = document.getElementById('dlTrigMsg');
     if (!btn || !msg) return;
+    const tab = window._dlTab;
+    let body;
+    if (tab === 'bulk') {
+      const country = (document.getElementById('dlBCountry')?.value||'').trim().toUpperCase();
+      const from_year = parseInt(document.getElementById('dlBFrom')?.value||'2017');
+      const to_year   = parseInt(document.getElementById('dlBTo')?.value||String(CURRENT_YEAR));
+      body = { from_year, to_year };
+      if (country) body.country_code = country;
+    } else if (tab === 'targeted') {
+      const ticker  = (document.getElementById('dlTTicker')?.value||'').trim().toUpperCase();
+      const country = (document.getElementById('dlTCountry')?.value||'').trim().toUpperCase();
+      const from_year = parseInt(document.getElementById('dlTFrom')?.value||'2017');
+      const to_year   = parseInt(document.getElementById('dlTTo')?.value||String(CURRENT_YEAR));
+      if (!country) { msg.style.color='var(--red)'; msg.textContent='✕ Please select a country first.'; return; }
+      if (!ticker)  { msg.style.color='var(--red)'; msg.textContent='✕ Please select a security / ticker.'; return; }
+      body = { ticker_region:ticker, country_code:country, from_year, to_year };
+    } else {
+      const country = (document.getElementById('dlACountry')?.value||'').trim().toUpperCase();
+      const ticker  = (document.getElementById('dlATicker')?.value||'').trim().toUpperCase();
+      const year    = parseInt(document.getElementById('dlAYear')?.value||String(CURRENT_YEAR));
+      const reportType = document.getElementById('dlAReportType')?.value || 'annual';
+      const period  = document.getElementById('dlAPeriod')?.value || '';
+      if (!country) { msg.style.color='var(--red)'; msg.textContent='✕ Please select a country.'; return; }
+      if (!ticker)  { msg.style.color='var(--red)'; msg.textContent='✕ Please enter a ticker.'; return; }
+      if ((reportType==='semi-annual'||reportType==='quarterly') && !period) {
+        msg.style.color='var(--red)'; msg.textContent='✕ Please select a Period.'; return;
+      }
+      body = { ticker_region:ticker, country_code:country, year, report_type:reportType, period };
+    }
+
     btn.disabled = true; btn.textContent = 'Queueing…';
     msg.style.color = 'var(--txt3)'; msg.textContent = '';
+    let jobId;
     try {
-      let res;
-      if (window._dlTab === 'bulk') {
-        const country = (document.getElementById('dlBCountry')?.value||'').trim().toUpperCase();
-        const from_year = parseInt(document.getElementById('dlBFrom')?.value||'2017');
-        const to_year   = parseInt(document.getElementById('dlBTo')?.value||String(CURRENT_YEAR));
-        const body = { from_year, to_year };
-        if (country) body.country_code = country;
-        res = await triggerBulk(body);
-      } else {
-        const ticker  = (document.getElementById('dlTTicker')?.value||'').trim().toUpperCase();
-        const country = (document.getElementById('dlTCountry')?.value||'').trim().toUpperCase();
-        const from_year = parseInt(document.getElementById('dlTFrom')?.value||'2017');
-        const to_year   = parseInt(document.getElementById('dlTTo')?.value||String(CURRENT_YEAR));
-        if (!country) {
-          msg.style.color='var(--red)'; msg.textContent='✕ Please select a country first.';
-          btn.disabled=false; btn.textContent='Trigger Job'; return;
-        }
-        if (!ticker) {
-          msg.style.color='var(--red)'; msg.textContent='✕ Please select a security / ticker.';
-          btn.disabled=false; btn.textContent='Trigger Job'; return;
-        }
-        res = await triggerTargeted({ ticker_region:ticker, country_code:country, from_year, to_year });
-      }
-      msg.style.color='var(--green)';
-      msg.textContent='✓ Job queued — '+res.job_id.slice(0,8)+'…';
-      dlLoadJobs();
-    } catch(e) {
-      msg.style.color='var(--red)';
-      msg.textContent='✕ '+(e?.data?.error||JSON.stringify(e?.data)||'Request failed');
-    } finally {
-      btn.disabled=false; btn.textContent='Trigger Job';
+      const triggerFn = tab==='bulk' ? triggerBulk : tab==='targeted' ? triggerTargeted : triggerAgent;
+      const res = await triggerFn(body);
+      jobId = res.job_id;
+    } catch (e) {
+      // No live backend wired up in this prototype — simulate the job locally so it still appears
+      jobId = genJobId();
     }
+    const job = mockJobFromTrigger(tab, body, jobId);
+    window._dlJobs = [job, ...(window._dlJobs||[])];
+    dlUpdateStats(window._dlJobs);
+    dlRenderJobList(window._dlJobs);
+    dlSimulateJobCompletion(jobId);
+
+    msg.style.color='var(--green)';
+    msg.textContent='✓ Job queued — '+jobId.slice(0,8)+'…';
+    btn.disabled=false; btn.textContent='Trigger Job';
   };
 
   // ── Load jobs ────────────────────────────────────────────
@@ -5470,7 +6163,10 @@ function renderAutomation() {
     try {
       jobs = await fetchJobs(from, to);
     } catch(_) {
-      jobs = DEMO_JOBS;
+      // No live backend — fall back to demo data, but keep any job triggered locally this session on top
+      const demoIds = new Set(DEMO_JOBS.map(j=>j.job_id));
+      const localOnly = (window._dlJobs||[]).filter(j => !demoIds.has(j.job_id));
+      jobs = [...localOnly, ...DEMO_JOBS];
       isDemo = true;
     }
     window._dlJobs = jobs;
@@ -5506,35 +6202,21 @@ function renderAutomation() {
   function dlJobRowHTML(j) {
     const sm = STATUS_META[j.status] || STATUS_META.pending;
     const expanded = window._dlExpanded === j.job_id;
-    const p = calcProgress(j);
     const isT = isTerminal(j.status);
 
-    // Progress / stats bar
-    let progressHTML;
-    if (!isT) {
-      // running + pending both show indeterminate sweeping line; pending with known % shows filled bar
-      if (p === null || j.status === 'running') {
-        progressHTML = `<div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
-          <div style="width:40%;height:100%;border-radius:3px;background:var(--blue);animation:dl-indeterminate 1.4s ease-in-out infinite;"></div>
-        </div>`;
-      } else {
-        progressHTML = `<div style="flex:1;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;">
-          <div style="width:${p}%;height:100%;border-radius:3px;background:${j.total_failed>0?'var(--amber)':'var(--blue)'};transition:width .4s ease;"></div>
-        </div>`;
-      }
-    } else {
-      progressHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+    // Stats — always shown the same way regardless of status, matching the real Automation Console.
+    // Manual-trigger-only now, so there's no need for an indeterminate "in progress" sweep.
+    const progressHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
         <span class="dl-pill" style="background:rgba(34,197,94,0.10);color:var(--green);"><b>${j.total_success}</b>&nbsp;ok</span>
         <span class="dl-pill" style="${j.total_failed>0?'background:rgba(239,68,68,0.10);color:var(--red);':''}"><b>${j.total_failed}</b>&nbsp;fail</span>
         <span class="dl-pill"><b>${j.total_skipped}</b>&nbsp;skip</span>
         <span class="dl-pill"><b>${j.total_expected}</b>&nbsp;total</span>
       </div>`;
-    }
 
     // Type badge
-    const typeColor = j.job_type==='bulk' ? 'var(--blue)' : 'var(--purple)';
-    const typeBg    = j.job_type==='bulk' ? 'var(--blue-bg)' : 'var(--purple-bg)';
-    const typeBd    = j.job_type==='bulk' ? 'var(--blue-bd)' : 'var(--purple-bd)';
+    const typeColor = j.job_type==='bulk' ? 'var(--blue)' : j.job_type==='targeted' ? 'var(--purple)' : 'var(--amber)';
+    const typeBg    = j.job_type==='bulk' ? 'var(--blue-bg)' : j.job_type==='targeted' ? 'var(--purple-bg)' : 'var(--amber-bg)';
+    const typeBd    = j.job_type==='bulk' ? 'var(--blue-bd)' : j.job_type==='targeted' ? 'var(--purple-bd)' : 'var(--amber-bd)';
 
     // Log rows (only when expanded)
     let logHTML = '';
@@ -5563,12 +6245,6 @@ function renderAutomation() {
             <span>Completed: <b style="color:var(--txt2);">${fmtDate(j.completed_at)}</b></span>
             ${!isT?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--blue);font-size:9px;"><span style="animation:dl-pulse 1.2s infinite;">●</span> polling every 5s</span>`:''}
           </div>
-          ${!isT?`<div style="display:flex;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);">
-            <span class="dl-pill"><b>${j.total_expected}</b>&nbsp;expected</span>
-            <span class="dl-pill" style="background:rgba(34,197,94,0.10);color:var(--green);"><b>${j.total_success}</b>&nbsp;success</span>
-            <span class="dl-pill" style="${j.total_failed>0?'background:rgba(239,68,68,0.10);color:var(--red);':''}"><b>${j.total_failed}</b>&nbsp;failed</span>
-            <span class="dl-pill"><b>${j.total_skipped}</b>&nbsp;skipped</span>
-          </div>`:''}
           <!-- Log header -->
           <div style="display:grid;grid-template-columns:28px 52px 130px 1fr 50px 140px;gap:6px;padding:6px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt3);background:var(--bg2);">
             <span></span><span>Level</span><span>Event</span><span>Details</span><span style="text-align:center;">FY</span><span>Timestamp</span>
