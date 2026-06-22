@@ -2844,6 +2844,13 @@ function isYearFullyResolved(w, year) {
   const segs = ((CLSDATA[w.coId]||{})[year]||{}).segments || [];
   return segs.every((s,i) => isRowSubThemeFinalized(w, year, i));
 }
+// Whether a given fiscal year goes through the Automation review gates. A company-level filing can have
+// some years Automation-processed and others not (e.g. one year's AR failed to download and the analyst
+// chose how to proceed) — w.llmYears[year] overrides the company-wide w.llm flag when set explicitly.
+function isAIYear(w, year) {
+  const y = (w.llmYears||{})[year];
+  return y !== undefined ? y : !!w.llm;
+}
 
 
 function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
@@ -2863,7 +2870,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
       : '';
 
     // Gate Submit for QC on the two AI review gates (Classification data + Sub-Theme), if this row is Automation-processed
-    const isAIRow = !!w.llm;
+    const isAIRow = isAIYear(w, activeYear);
     const aiResolved = !isAIRow || isYearFullyResolved(w, activeYear);
 
     return `
@@ -3414,7 +3421,7 @@ function renderCompanyReport(wbId) {
       </table>
       <div class="ar-section">Notes to Financial Statements</div>
       <div class="ar-para">Segment revenues are presented in accordance with applicable financial reporting standards. The Company's principal operations are evaluated based on segment revenue and profitability metrics.</div>
-      ${w.llm?`<div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:4px;padding:8px 10px;margin-top:8px;font-size:10px;color:#1e40af;font-family:sans-serif">🤖 Automation Engine: Key page references — ${d.segments.map(s=>s.pg?`<span onclick="gotoPage(${s.pg})" style="cursor:pointer;text-decoration:underline;color:#2563eb">p.${s.pg}</span>`:'').filter(Boolean).join(', ')}</div>`:''}
+      ${isAIYear(w, activeYear)?`<div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:4px;padding:8px 10px;margin-top:8px;font-size:10px;color:#1e40af;font-family:sans-serif">🤖 Automation Engine: Key page references — ${d.segments.map(s=>s.pg?`<span onclick="gotoPage(${s.pg})" style="cursor:pointer;text-decoration:underline;color:#2563eb">p.${s.pg}</span>`:'').filter(Boolean).join(', ')}</div>`:''}
       <div class="ar-footer">CONFIDENTIAL | FOR INTERNAL USE ONLY | ${esc(w.coName).toUpperCase()}</div>
       <div class="ar-pgnum">— ${arPage} —</div>
     </div>`;
@@ -3468,7 +3475,23 @@ function renderCompanyReport(wbId) {
     const _fyParts=(co.fyEnd||'Dec-31').split('-'),_fyMo={'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12'},
           _fyDate=activeYear+'-'+(_fyMo[_fyParts[0]]||'12')+'-'+(_fyParts[1]||'31');
     const _ro=!isYearEditable(activeYear);
+    const _arWf = (w.arWorkflow||{})[activeYear];
+    let metaBanner = '';
+    if (isEditable && _arWf) {
+      if (_arWf.choice === 'manual') {
+        metaBanner = `<div class="ai-info-box">
+          <div class="ai-info-hdr">Manual Review Needed</div>
+          <div style="font-size:12.5px">A replacement report was uploaded for FY${activeYear}. Verify the metadata fields below against it — Business Description, Total Revenue and dates may need correcting — then add segments under Revenue Segmentation.</div>
+        </div>`;
+      } else if (_arWf.choice === 'automated' && _arWf.status === 'done') {
+        metaBanner = `<div class="ai-ok-box">
+          <div class="ai-ok-hdr">Metadata Updated by Automation</div>
+          <div style="font-size:12.5px">Business Description was refreshed from the newly uploaded report. Verify it's accurate, then review the Sub-Theme suggestions under Revenue Segmentation.</div>
+        </div>`;
+      }
+    }
     const metadataContent = `
+    ${metaBanner}
     <div class="fg-row fg-2" style="padding-bottom:4px">
       <div class="fg"><label class="fl">Legal Name</label><input class="fi" value="${esc(co.name||w.coName)}" ${_ro?'readonly':''}></div>
       <div class="fg"><label class="fl">ISIN</label><input class="fi" value="${esc(w.isin)}" readonly style="font-family:var(--mono)"></div>
@@ -3490,10 +3513,19 @@ function renderCompanyReport(wbId) {
       <div class="fg"><label class="fl">Factset Ticker</label><input class="fi" value="${esc(co.ticker||'—')}" ${_ro?'readonly':''} style="font-family:var(--mono)"></div>
     </div>
     <div class="fg"><label class="fl">Business Description</label><textarea class="ft" rows="2" style="font-size:12.5px" ${_ro?'readonly':''}>${esc(co.bd||'—')}</textarea></div>
-    ${w.llm&&d.segments.some(s=>s.pg)?`
+    ${isAIYear(w, activeYear)&&d.segments.some(s=>s.pg)?`
     <div style="margin-top:6px;font-size:11px;color:var(--txt3)">
       AR page refs: ${d.segments.filter(s=>s.pg).map(s=>`<span class="page-ref" onclick="gotoPage(${s.pg})">p.${s.pg}</span>`).join(' ')}
-    </div>`:''}`;
+    </div>`:''}
+    ${isEditable ? `
+    <div class="fg" style="margin-top:14px">
+      <label class="fl">Upload Report</label>
+      <div id="ar-upload-zone" style="border:1px dashed var(--border2);border-radius:var(--radius);padding:14px;text-align:center;cursor:pointer;background:var(--bg2)" onclick="document.getElementById('ar-upload-input').click()">
+        <input type="file" id="ar-upload-input" accept=".pdf" style="display:none" onchange="handleARUpload(event)">
+        <span style="font-size:12px;color:var(--txt3)">⬆ Click to select file</span>
+      </div>
+      <div id="ar-upload-choice" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius)"></div>
+    </div>` : ''}`;
 
     // REVENUE TAB — per-segment Sector from Sub-Theme->Theme->Sector chain, then dominant = max total pct
     const _segL0 = d.segments.map(function(s) {
@@ -3511,18 +3543,20 @@ function renderCompanyReport(wbId) {
     const _initIncomplete = d.segments.filter(function(s){ return !(s.rev>0); }).length;
 
     // Gate 1 — Classification data (AR Classification / Revenue / Revenue % / Revenue Class), whole table
-    const clsStatus = w.llm ? getClsGateStatus(w, activeYear) : null;
+    const _isAIYr = isAIYear(w, activeYear);
+    const clsStatus = _isAIYr ? getClsGateStatus(w, activeYear) : null;
     const clsGateRec = (w.clsGate||{})[activeYear] || {};
-    const clsLocked = w.llm && clsStatus !== 'accepted';        // Sub-Theme review locked until accepted
-    const clsRowsEditable = w.llm && clsStatus === 'rejected';   // AR Classification/Revenue/Revenue%/Class editable
-    const finalSectorReady = !w.llm || isYearFullyResolved(w, activeYear);
+    const clsLocked = _isAIYr && clsStatus !== 'accepted';        // Sub-Theme review locked until accepted
+    const clsRowsEditable = _isAIYr && clsStatus === 'rejected';   // AR Classification/Revenue/Revenue%/Class editable
+    const finalSectorReady = !_isAIYr || isYearFullyResolved(w, activeYear);
 
     let clsBanner = '';
-    if (isEditable && w.llm) {
+    if (isEditable && _isAIYr) {
       if (clsStatus === 'pending') {
+        const _isReAsk = !!clsGateRec.correctedTs;
         clsBanner = `<div class="ai-info-box">
-          <div class="ai-info-hdr">Review Needed</div>
-          <div style="font-size:12.5px;margin-bottom:8px">Confirm the AR Classification, Revenue, Revenue % and Revenue Class values below against the Annual Report.</div>
+          <div class="ai-info-hdr">${_isReAsk ? 'Re-confirm Needed' : 'Review Needed'}</div>
+          <div style="font-size:12.5px;margin-bottom:8px">${_isReAsk ? 'The AR Classification was just updated from your reference. Confirm the values below are now correct, or Reject again if something is still off.' : 'Confirm the AR Classification, Revenue, Revenue % and Revenue Class values below against the Annual Report.'}</div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-danger btn-xs" onclick="clsGateOpenReject()">✕ Reject</button>
             <button class="btn btn-success btn-xs" onclick="clsGateAccept()">✓ Accept</button>
@@ -3533,8 +3567,14 @@ function renderCompanyReport(wbId) {
           <div class="rej-hdr">Correction Needed</div>
           ${clsGateRec.issueLabel ? `<div style="margin-bottom:6px"><span class="badge" style="background:var(--red-bg);color:var(--red);border-color:var(--red-bd)">${esc(clsGateRec.issueLabel)}</span></div>` : ''}
           <div style="font-size:12.5px;margin-bottom:8px">${esc(clsGateRec.reason||'—')}</div>
-          <div style="font-size:11px;color:var(--txt3);margin-bottom:8px">Edit the AR Classification, Revenue, Revenue % and Revenue Class values directly in the table below, then re-run the Sub-Theme suggestions.</div>
-          <button class="btn btn-primary btn-xs" id="cls-retrigger-btn" onclick="clsGateRetrigger()">Re-suggest Sub-Themes →</button>
+          <div style="font-size:11px;color:var(--txt3);margin-bottom:8px">Upload a screenshot or PDF excerpt showing the correct AR Classification — this doesn't replace the Annual Report, it just tells the system which data to use. Then match the values in the table below and click Update.</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <div id="ar-class-upload-zone" style="border:1px dashed var(--border2);border-radius:var(--radius);padding:8px 12px;cursor:pointer;background:var(--bg2);font-size:11px;color:var(--txt3)" onclick="document.getElementById('ar-class-upload-input').click()">
+              <input type="file" id="ar-class-upload-input" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="handleARClassUpload(event)">
+              <span id="ar-class-upload-label">⬆ Upload screenshot or PDF of correct AR Classification</span>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-xs" id="cls-retrigger-btn" onclick="clsGateRetrigger()">Update AR Classification →</button>
         </div>`;
       } else if (clsStatus === 'accepted') {
         clsBanner = `<div class="ai-ok-box">
@@ -3562,9 +3602,9 @@ function renderCompanyReport(wbId) {
         </tr></thead>
         <tbody id="rev-tbody">
           ${d.segments.length>0 ? d.segments.map((s,i)=>{
-            const rowGated = w.llm && clsLocked;
-            const rowEditableCls = w.llm ? clsRowsEditable : isYearEditable(activeYear);
-            const finalized = !w.llm || isRowSubThemeFinalized(w, activeYear, i);
+            const rowGated = _isAIYr && clsLocked;
+            const rowEditableCls = _isAIYr ? clsRowsEditable : isYearEditable(activeYear);
+            const finalized = !_isAIYr || isRowSubThemeFinalized(w, activeYear, i);
             const labelCell = rowEditableCls
               ? `<input class="fi-inline" id="cls-label-${i}" value="${esc(s.label)}">`
               : `<span>${esc(s.label)}</span>`;
@@ -3658,7 +3698,7 @@ function renderCompanyReport(wbId) {
           <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(w.coName)}</div>
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
             ${typeBadge(w.type)}
-            ${w.llm
+            ${isAIYear(w, activeYear)
               ? `<span class="llm-chip" title="Automation-extracted classification — segment data and page references were extracted by AI. Verify against the Annual Report before submitting.">Automation</span>`
               : `<span style="font-size:10px;color:var(--txt3);font-family:var(--mono);padding:1px 5px;border:1px solid var(--border2);border-radius:3px">Manual</span>`}
             <span class="mono" style="font-size:10.5px;color:var(--txt3)">FY${activeYear}</span>
@@ -3859,6 +3899,94 @@ function renderCompanyReport(wbId) {
     toast(result.addedCount ? `Segments saved ✓ — ${result.addedCount} new segment${result.addedCount>1?'s':''} added.` : 'Segments saved ✓.', 'ok');
   };
 
+  // ── Upload Report → choose manual vs automated workflow ──
+  // Covers both the "wrong AR" and "no AR" cases: once a replacement/missing report is uploaded for this
+  // fiscal year, the analyst picks whether to classify it manually or run the automated service on it.
+  window.handleARUpload = function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    // The previous report is being replaced — whatever was classified against it is now stale, so
+    // clear it immediately rather than leaving it sitting there until a new workflow choice is made.
+    CLSDATA[w.coId] = CLSDATA[w.coId] || {};
+    CLSDATA[w.coId][activeYear] = { l0: w.l0, segments: [] };
+    if (w.clsGate) delete w.clsGate[activeYear];
+    if (w.subThemeGate) delete w.subThemeGate[activeYear];
+    if (w.llmYears) delete w.llmYears[activeYear];
+    if (w.arWorkflow) delete w.arWorkflow[activeYear];
+
+    const choiceEl = document.getElementById('ar-upload-choice');
+    if (choiceEl) {
+      choiceEl.style.display = 'block';
+      choiceEl.innerHTML = `
+        <div style="font-size:12px;margin-bottom:8px">File selected: <strong>${esc(file.name)}</strong> — previous classification data for FY${activeYear} has been cleared. How would you like to proceed?</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="chooseManualWorkflow()">✏️ Fill In Manually</button>
+          <button class="btn btn-primary btn-sm" onclick="chooseAutomatedWorkflow()">✨ Run Automated Classification</button>
+        </div>`;
+    }
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Uploaded Annual Report',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — uploaded report (${file.name}); previous classification data for this year cleared. Awaiting workflow choice.`});
+  };
+
+  window.chooseManualWorkflow = function() {
+    w.llmYears = w.llmYears || {};
+    w.llmYears[activeYear] = false;
+    w.arWorkflow = w.arWorkflow || {};
+    w.arWorkflow[activeYear] = { choice:'manual', status:'done', ts:new Date().toISOString(), by:currentUser.name };
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Chose Manual Classification',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — analyst will review metadata and classify the uploaded report manually.`});
+    const choiceEl = document.getElementById('ar-upload-choice');
+    if (choiceEl) choiceEl.innerHTML = `<div style="font-size:12px;color:var(--green)">✓ Manual classification selected for FY${activeYear} — review the metadata fields above, then add segments under Revenue Segmentation.</div>`;
+    toast('Manual classification selected — review metadata above, then add segments under Revenue Segmentation.','ok');
+    // Stay on Metadata — this report replacement affects metadata too, not just segments
+    document.getElementById('form-panel').innerHTML = buildForm();
+    rebindActionBar();
+  };
+
+  window.chooseAutomatedWorkflow = function() {
+    const choiceEl = document.getElementById('ar-upload-choice');
+    if (choiceEl) {
+      choiceEl.innerHTML = `<div style="font-size:12px;display:flex;align-items:center;gap:8px">
+        <span style="display:inline-block;width:13px;height:13px;border:2px solid var(--blue-bd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite"></span>
+        Running automated classification for FY${activeYear}…
+      </div>`;
+    }
+    const delayMs = 2000 + Math.random()*1000; // 2-3s — extraction + mapping running on the newly uploaded report
+    setTimeout(() => {
+      w.llmYears = w.llmYears || {};
+      w.llmYears[activeYear] = true;
+      w.arWorkflow = w.arWorkflow || {};
+      w.arWorkflow[activeYear] = { choice:'automated', status:'done', ts:new Date().toISOString(), by:currentUser.name };
+      // Demo/simulated output — this prototype has no live AI service, so a small illustrative
+      // placeholder segment set stands in for what automated classification would have produced.
+      const l2Sample = TAX.L2[Math.floor(Math.random()*TAX.L2.length)];
+      const l1Sample = TAX.L1.find(x=>x.c===l2Sample.l1);
+      const segs = [
+        { label:'Primary Business Segment', rev:650, pct:70, cls:computeRevenueClass(70), l1:l1Sample?l1Sample.c:'', l1n:l1Sample?l1Sample.n:'', l2:l2Sample.c, l2n:l2Sample.n, pg:null, llm:true },
+        { label:'Other Operations', rev:280, pct:30, cls:computeRevenueClass(30), l1:l1Sample?l1Sample.c:'', l1n:l1Sample?l1Sample.n:'', l2:l2Sample.c, l2n:l2Sample.n, pg:null, llm:true },
+      ];
+      CLSDATA[w.coId] = CLSDATA[w.coId] || {};
+      CLSDATA[w.coId][activeYear] = { l0: w.l0, segments: segs };
+      w.clsGate = w.clsGate || {};
+      delete w.clsGate[activeYear];
+      w.subThemeGate = w.subThemeGate || {};
+      delete w.subThemeGate[activeYear];
+      // A wrong/missing AR means metadata pulled from it could be wrong too — re-extract alongside segments.
+      // (Demo placeholder text, same illustrative-only caveat as the segments above.)
+      co.bd = `[Automated Extraction — FY${activeYear}] Business description re-extracted from the newly uploaded Annual Report. Please verify this against the source document.`;
+      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Triggered Automated Classification',
+        co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+        detail:`FY${activeYear} — automated classification complete on the uploaded report; metadata and segments both updated. Ready for review.`});
+      toast('Automated classification complete ✓ — metadata refreshed too. Review the suggested segments under Revenue Segmentation.','ok');
+      activeFormTab = 'revenue';
+      document.getElementById('form-panel').innerHTML = buildForm();
+      rebindActionBar();
+    }, delayMs);
+  };
+
   window.clsGateAccept = function() {
     const result = commitSegmentChanges();
     const d = getSegData();
@@ -3977,6 +4105,20 @@ function renderCompanyReport(wbId) {
     if (badgeEl) badgeEl.innerHTML = totalPctBadgeHTML(totalPct, incompleteCount);
   };
 
+  // Lets the analyst attach a screenshot/PDF excerpt of the correct AR Classification as a reference for
+  // the extraction service — it does not replace the Annual Report itself, just tells the service which
+  // data to use. Purely illustrative here (this prototype has no live OCR/extraction), but the table below
+  // still needs to be matched to it before clicking Update.
+  window.handleARClassUpload = function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const label = document.getElementById('ar-class-upload-label');
+    if (label) label.textContent = '✓ Reference attached: ' + file.name;
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Attached AR Classification Reference',
+      co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+      detail:`FY${activeYear} — attached reference (${file.name}) indicating which data to use for AR Classification.`});
+  };
+
   window.clsGateRetrigger = function() {
     const d = getSegData();
     const before = JSON.parse(JSON.stringify(d.segments||[]));
@@ -3986,21 +4128,23 @@ function renderCompanyReport(wbId) {
 
     // Show a processing state immediately
     const btn = document.getElementById('cls-retrigger-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Running Sub-Theme suggestions…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Updating AR Classification…'; }
     const banner = document.getElementById('cls-gate-banner');
     if (banner) {
-      banner.innerHTML = `<div class="rej-hdr">Re-running Sub-Theme Suggestions</div>
+      banner.innerHTML = `<div class="rej-hdr">Updating AR Classification</div>
         <div style="font-size:12.5px;display:flex;align-items:center;gap:8px">
           <span style="display:inline-block;width:13px;height:13px;border:2px solid var(--red-bd);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite"></span>
-          Re-classifying corrected segments against the taxonomy…
+          Applying the corrected AR Classification — Sub-Themes mapped earlier are no longer valid and will be re-done…
         </div>`;
     }
 
-    const delayMs = 5000 + Math.random()*2000; // 5-7s, simulates the Mapping service re-running
+    const delayMs = 2000 + Math.random()*1000; // 2-3s, consistent with the other extraction/mapping triggers
     setTimeout(() => {
       const result = applySegmentRows(rawRows, { resetExistingGate: true });
       const rv = (w.clsGate||{})[activeYear] || {};
-      w.clsGate[activeYear] = Object.assign({}, rv, { status:'accepted', correctedTs:new Date().toISOString() });
+      // Back to pending, not accepted — the corrected data still needs to go through Accept/Reject
+      // again before Sub-Theme review unlocks, same as the original AI-suggested data did.
+      w.clsGate[activeYear] = { status:'pending', correctedTs:new Date().toISOString(), priorIssueLabel: rv.issueLabel||null, priorReason: rv.reason||null };
       const dAfter = getSegData();
       DECISIONLOG.unshift({
         id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
@@ -4008,19 +4152,19 @@ function renderCompanyReport(wbId) {
         issueLabel: rv.issueLabel||null, reason: rv.reason||'', segmentsBefore:before, segmentsAfter:JSON.parse(JSON.stringify(dAfter.segments||[])),
         ts:new Date().toISOString()
       });
-      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Corrected Classification Data',
+      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Updated AR Classification',
         co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
-        detail:`FY${activeYear} — Classification data corrected; Sub-Theme suggestions re-run.${result.addedCount?` ${result.addedCount} new segment(s) added.`:''}`});
+        detail:`FY${activeYear} — AR Classification updated from the corrected reference; prior Sub-Theme mappings invalidated. Awaiting Accept/Reject again.${result.addedCount?` ${result.addedCount} new segment(s) added.`:''}`});
       const panel = document.getElementById('form-panel');
       if (panel) panel.innerHTML = buildForm();
       rebindActionBar();
-      toast('Classification corrected ✓ — fresh Sub-Theme suggestions are ready for review.','ok');
+      toast('AR Classification updated ✓ — please Accept or Reject the corrected data before continuing.','ok');
     }, delayMs);
   };
 
   // ── Gate 2: Sub-Theme — per row, finalized one by one via "Set" ──
   window.subThemeOpenSet = function(idx) {
-    if (w.llm && getClsGateStatus(w, activeYear) !== 'accepted') {
+    if (isAIYear(w, activeYear) && getClsGateStatus(w, activeYear) !== 'accepted') {
       toast('Confirm the Classification data above first.','err'); return;
     }
     const d = getSegData();
@@ -4128,7 +4272,7 @@ function renderCompanyReport(wbId) {
 
   window.submitForQC = id => {
     const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
-    if (wb.llm && !isYearFullyResolved(wb, activeYear)) {
+    if (isAIYear(wb, activeYear) && !isYearFullyResolved(wb, activeYear)) {
       toast('Confirm the Classification data and Sub-Theme review before submitting for QC.','err'); return;
     }
     const dCheck = (CLSDATA[wb.coId]||{})[activeYear];
