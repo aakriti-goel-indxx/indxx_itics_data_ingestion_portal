@@ -111,7 +111,13 @@ select option { background: var(--bg2); color: var(--txt); }
    LAYOUT
 ═══════════════════════════════════════════════════ */
 #shell { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
-#sidebar { width: var(--nav-w); min-width: var(--nav-w); background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 20; }
+#sidebar { width: var(--nav-w); min-width: var(--nav-w); background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 20; transition: width 0.22s ease, min-width 0.22s ease; overflow: hidden; }
+#sidebar.collapsed { width: 0; min-width: 0; border-right: none; }
+#sidebar.collapsed .sb-brand,
+#sidebar.collapsed .sb-nav,
+#sidebar.collapsed .sb-footer { opacity: 0; pointer-events: none; transition: opacity 0.1s; }
+#sb-toggle { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border2); background: var(--bg2); color: var(--txt2); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; transition: background 0.15s; }
+#sb-toggle:hover { background: var(--bg3); color: var(--txt); }
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: auto; }
 #topbar { height: var(--topbar-h); min-height: var(--topbar-h); background: var(--bg1); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; }
 #view { flex: 1; overflow-y: auto; overflow-x: auto; padding: 22px 24px; }
@@ -724,9 +730,9 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
       <div class="sb-group" onclick="sbToggle('sec-overview')"><span>Overview</span><span class="sb-group-arrow">▼</span></div>
       <div class="sb-section" id="sec-overview" style="max-height:200px">
         <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard')">Dashboard</div>
-        <div class="nav-item" data-page="golden" onclick="nav('golden')">Golden Data</div>
-        <div class="nav-item" data-page="automation" onclick="nav('automation')">Automation</div>
-        <div class="nav-item" data-page="screener" onclick="nav('screener')">Screener</div>
+        <div class="nav-item" data-page="golden" onclick="nav('golden')" data-hide-analyst data-admin-only>Golden Data</div>
+        <div class="nav-item" data-page="automation" onclick="nav('automation')" data-hide-analyst>Automation</div>
+        <div class="nav-item" data-page="screener" onclick="nav('screener')" data-admin-only>Screener</div>
       </div>
       <div class="sb-group" onclick="sbToggle('sec-master')"><span>Master Data</span><span class="sb-group-arrow">▼</span></div>
       <div class="sb-section" id="sec-master" style="max-height:200px">
@@ -741,8 +747,8 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
       <div class="sb-section" id="sec-ca" style="max-height:200px">
         <div class="nav-item" data-page="ca-gc" onclick="nav('ca-gc')">CA Golden Copy</div>
       </div>
-      <div class="sb-group" onclick="sbToggle('sec-reports')"><span>Reports</span><span class="sb-group-arrow">▼</span></div>
-      <div class="sb-section" id="sec-reports" style="max-height:200px">
+      <div class="sb-group" id="sb-group-reports" onclick="sbToggle('sec-reports')" data-hide-analyst data-admin-only><span>Reports</span><span class="sb-group-arrow">▼</span></div>
+      <div class="sb-section" id="sec-reports" style="max-height:200px" data-hide-analyst data-admin-only>
         <div class="nav-item" data-page="reports" onclick="nav('reports')">Download Reports</div>
         <div class="nav-item" data-page="audit" onclick="nav('audit')">Audit Trail</div>
       </div>
@@ -751,7 +757,7 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
       <div class="user-chip" onclick="openRoleModal()" id="user-chip">
         <div class="user-av" id="u-av" style="background:var(--blue)">RL</div>
         <div style="flex:1; min-width:0">
-          <div class="user-nm" id="u-nm">Rakshit Lodha</div>
+          <div class="user-nm" id="u-nm">Vivek Paliwal</div>
           <div class="user-rl" id="u-rl">ANALYST</div>
         </div>
         <span style="color:var(--txt3); font-size:10px">⇅</span>
@@ -763,9 +769,12 @@ th.sortable.desc .sort-ico { opacity:1; color:var(--blue); }
   <div id="main">
     <!-- TOPBAR -->
     <div id="topbar">
-      <div>
-        <div class="tb-title" id="tb-title">Dashboard</div>
-        <div class="tb-crumb" id="tb-crumb">ITICS / Dashboard</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="sb-toggle" onclick="toggleSidebar()" title="Toggle navigation">☰</button>
+        <div>
+          <div class="tb-title" id="tb-title">Dashboard</div>
+          <div class="tb-crumb" id="tb-crumb">ITICS / Dashboard</div>
+        </div>
       </div>
       <div class="tb-right">
         <button class="theme-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle theme">☽</button>
@@ -827,42 +836,22 @@ let darkMode = true;
 let currentPage = 'dashboard';
 let currentParams = {};
 let currentRole = 'analyst';
-let currentUser = { name:'Rakshit Lodha', initials:'RL', role:'analyst' };
+let currentUser = { name:'Vivek Paliwal', initials:'RL', role:'analyst' };
 
 const ROLE_DEF = {
-  analyst:   { label:'Analyst',          icon:'👤', color:'var(--blue)',   bg:'var(--blue-bg)',   tc:'var(--blue)' },
-  qc:        { label:'QC',               icon:'🔎', color:'var(--purple)', bg:'var(--purple-bg)', tc:'var(--purple)' },
-  committee: { label:'ITICS Committee',  icon:'🏛',  color:'var(--amber)',  bg:'var(--amber-bg)',  tc:'var(--amber)' },
-  rm:        { label:'RM',               icon:'👔', color:'var(--green)',  bg:'var(--green-bg)',  tc:'var(--green)' },
-  admin:     { label:'Admin',            icon:'⚙',  color:'var(--teal)',   bg:'var(--teal-bg)',   tc:'var(--teal)' },
+  analyst:   { label:'Analyst', icon:'👤', color:'var(--blue)',  bg:'var(--blue-bg)',  tc:'var(--blue)' },
+  rm:        { label:'RM',      icon:'👔', color:'var(--green)', bg:'var(--green-bg)', tc:'var(--green)' },
+  admin:     { label:'Admin',   icon:'⚙',  color:'var(--teal)',  bg:'var(--teal-bg)',  tc:'var(--teal)' },
 };
-// Team: 15 people from ITICS Research — split 8 Analyst, 7 QC
+// Team — all are Analysts, RM, or Admin. No separate QC or Committee roles.
 const ROLE_USERS = {
   analyst:   [
-    {name:'Rakshit Lodha',         initials:'RL'},
-    {name:'Sejal Jain',            initials:'SJ'},
-    {name:'Nripraj Singh Rathore', initials:'NR'},
-    {name:'Ishani Suthar',         initials:'IS'},
-    {name:'Pranjal Jain',          initials:'PJ'},
-    {name:'Vivek Paliwal',         initials:'VP'},
-    {name:'Nayan Jain',            initials:'NJ'},
-  ],
-  qc:        [
-    {name:'Samyak Jain',           initials:'SJ'},
-    {name:'Saurabh Negi',          initials:'SN'},
-    {name:'Niloni Lodha',          initials:'NL'},
-    {name:'Suhani Maheshwari',     initials:'SM'},
-    {name:'Khushi Jain',           initials:'KJ'},
-    {name:'Muskan Dak',            initials:'MD'},
-    {name:'Divya Jain',            initials:'DJ'},
-    {name:'Karan Sethi',           initials:'KS'},
-  ],
-  committee: [
-    {name:'Santosh J Shetti',      initials:'SS'},
-    {name:'Sunny Goyal',           initials:'SG'},
+    {name:'Vivek Paliwal',         initials:'RL'},
+    {name:'Nayan Jain',            initials:'SJ'},
+    {name:'Niloni Jain', initials:'NR'},
   ],
   rm:        [{name:'Santosh J Shetti', initials:'SS'}],
-  admin:     [{name:'Sunny Goyal',      initials:'SG'}],
+  admin:     [{name:'Rupanjan Baidya', initials:'RB'}],
 };
 
 // ── COMPANIES MASTER ──────────────────────────────────────
@@ -937,118 +926,178 @@ let COMPANIES = [
 // ── WORKBENCH ─────────────────────────────────────────────
 let WORKBENCH = [
   {id:'W001',coId:'C001',coName:'Alphabet Inc',isin:'US02079K3059',l0:'50',l0Name:'Communication Services',
-   assignedTo:'Rakshit Lodha',qcAssignedTo:'Samyak Jain',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   assignedTo:'Vivek Paliwal',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024,2025],
-   priority:'high',llm:true,rejCount:0,rejComment:'',committeeNote:'',
-   submittedDate:null,createdDate:'2025-03-01',qcBy:'',qcBy:''},
+   priority:'high',llm:true,
+   submittedDate:null,createdDate:'2025-03-01'},
   {id:'W002',coId:'C003',coName:'Apple Inc',isin:'US0378331005',l0:'55',l0Name:'Information Technology',
-   assignedTo:'Rakshit Lodha',qcAssignedTo:'Saurabh Negi',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   assignedTo:'Vivek Paliwal',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
-   priority:'medium',llm:true,rejCount:0,rejComment:'',committeeNote:'',
-   submittedDate:null,createdDate:'2025-02-15',qcBy:'',qcBy:''},
+   priority:'medium',llm:true,
+   submittedDate:null,createdDate:'2025-02-15'},
   {id:'W003',coId:'C004',coName:'Nvidia Corp',isin:'US67066G1040',l0:'55',l0Name:'Information Technology',
-   assignedTo:'Sejal Jain',qcAssignedTo:'Niloni Lodha',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   assignedTo:'Nayan Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019],
-   priority:'high',llm:false,rejCount:1,
+   priority:'high',llm:false,
    rejComment:'Revenue segmentation for FY2018 does not reconcile with page 22 of the AR. The Data Center and Gaming split appears transposed — please re-verify against footnote 4B.',
-   committeeNote:'',submittedDate:'2025-03-10',createdDate:'2025-02-01',qcBy:'',qcBy:''},
+   committeeNote:'',submittedDate:'2025-03-10',createdDate:'2025-02-01'},
   {id:'W004',coId:'C005',coName:'Meta Platforms Inc',isin:'US30303M1027',l0:'50',l0Name:'Communication Services',
-   assignedTo:'Nripraj Singh Rathore',qcAssignedTo:'Suhani Maheshwari',type:'AR_UPDATE',wfStatus:'PENDING_IC',completionStatus:'wip',
+   assignedTo:'Niloni Jain',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024,2025],
-   priority:'high',llm:true,rejCount:2,
+   priority:'high',llm:true,
    rejComment:'Reality Labs classification disputed again. Insufficient justification for Emerging Technology vs Consumer Goods mapping. Second rejection — escalating to Committee.',
-   committeeNote:'',submittedDate:'2025-03-05',createdDate:'2025-01-20',qcBy:'',qcBy:''},
+   committeeNote:'',submittedDate:'2025-03-05',createdDate:'2025-01-20'},
   {id:'W005',coId:'C006',coName:'Netflix Inc',isin:'US64110L1061',l0:'40',l0Name:'Consumer Discretionary',
-   assignedTo:'Nripraj Singh Rathore',qcAssignedTo:'Khushi Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   assignedTo:'Niloni Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
-   priority:'low',llm:false,rejCount:0,rejComment:'',committeeNote:'',
-   submittedDate:null,createdDate:'2025-02-20',qcBy:'',qcBy:''},
+   priority:'low',llm:false,
+   submittedDate:null,createdDate:'2025-02-20'},
   {id:'W006',coId:'C007',coName:'Novartis AG',isin:'CH0012005267',l0:'35',l0Name:'Health Care',
-   assignedTo:'Ishani Suthar',qcAssignedTo:'Muskan Dak',type:'FRESH',wfStatus:'PENDING_QC',completionStatus:'wip',
+   assignedTo:'Nayan Jain',type:'FRESH',wfStatus:'PENDING_QC',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
-   priority:'medium',llm:true,rejCount:0,rejComment:'',committeeNote:'',
-   submittedDate:'2025-03-20',createdDate:'2025-01-10',qcBy:'',qcBy:''},
+   priority:'medium',llm:true,
+   submittedDate:'2025-03-20',createdDate:'2025-01-10'},
   {id:'W007',coId:'C009',coName:'Mitsubishi UFJ Financial Group',isin:'JP3902900004',l0:'10',l0Name:'Financials',
-   assignedTo:'Pranjal Jain',qcAssignedTo:'Divya Jain',type:'INVALIDATED',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   assignedTo:'Niloni Jain',type:'INVALIDATED',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[2017,2018,2019,2020,2021,2022],pendingYears:[2023,2024,2025],invalidatedYears:[2023,2024],
-   priority:'high',llm:false,rejCount:0,rejComment:'',committeeNote:'',
-   submittedDate:null,createdDate:'2025-03-15',qcBy:'',qcBy:''},
+   priority:'high',llm:false,
+   submittedDate:null,createdDate:'2025-03-15'},
   {id:'W008',coId:'C010',coName:'Starbucks Corp',isin:'US8552441094',l0:'40',l0Name:'Consumer Discretionary',
-   assignedTo:'Vivek Paliwal',qcAssignedTo:'Samyak Jain',type:'FRESH',wfStatus:'PENDING_IC',completionStatus:'wip',
+   assignedTo:'Vivek Paliwal',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
    yearsGC:[],pendingYears:[2017,2018,2019,2020,2021,2022,2023,2024,2025],
-   priority:'medium',llm:false,rejCount:2,
+   priority:'medium',llm:false,
    rejComment:'Licensed store vs company-operated store classification requires Committee guidance. Revenue treatment unclear per current methodology.',
-   committeeNote:'',submittedDate:'2025-03-01',createdDate:'2025-01-05',qcBy:'',qcBy:''},
+   committeeNote:'',submittedDate:'2025-03-01',createdDate:'2025-01-05'},
+
+  // Case 1: AR auto + extraction AI + mapping AI -> single analyst, no 4-eye
+  {id:'W009',coId:'C002',coName:'Amazon.com Inc',isin:'US0231351067',l0:'40',l0Name:'Consumer Discretionary',
+   assignedTo:'Vivek Paliwal',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024],
+   priority:'high',llm:true,
+   submittedDate:null,createdDate:'2025-04-01'},
+
+  // Case 2a: AR auto + extraction AI + analyst overrode mapping -> 4-eye
+  {id:'W010',coId:'CSV042',coName:'Siemens AG',isin:'DE0007236101',l0:'30',l0Name:'Industrials',
+   assignedTo:'Vivek Paliwal',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   yearsGC:[],pendingYears:[2024],
+   priority:'medium',llm:true,
+   submittedDate:null,createdDate:'2025-04-02',
+   clsGate:{2024:{status:'accepted',ts:'2025-04-02T10:00:00Z',by:'Vivek Paliwal'}},
+   subThemeGate:{2024:{
+     0:{status:'pending',originalL2:'300406'},
+     1:{status:'pending',originalL2:'100302'},
+     2:{status:'pending',originalL2:'350101'},
+     3:{status:'finalized',originalL2:'300604',changed:true,reason:'AI mapped this segment to Autonomous System (300604) but the Siemens AR page 34 classifies this under Smart Infrastructure — corrected to Industrial Machinery (300603) per the company segment disclosure.',ts:'2025-04-02T10:08:00Z',by:'Vivek Paliwal'},
+     4:{status:'pending',originalL2:'650102'},
+     5:{status:'pending',originalL2:'550413'},
+     6:{status:'pending',originalL2:'301002'},
+   }}},
+
+  // Case 2b: AR auto + extraction failed -> analyst filled manually -> 4-eye
+  {id:'W011',coId:'CSV032',coName:'Novartis AG',isin:'CH0012005267',l0:'35',l0Name:'Health Care',
+   assignedTo:'Nayan Jain',type:'AR_UPDATE',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024],
+   priority:'high',llm:true,
+   submittedDate:null,createdDate:'2025-04-03',
+   llmYears:{2024:false}},
+
+  // Case 3: AR manual upload + extraction AI + mapping AI -> single analyst, no 4-eye
+  {id:'W012',coId:'CSV049',coName:'Toyota Motor Corp',isin:'JP3633400001',l0:'40',l0Name:'Consumer Discretionary',
+   assignedTo:'Nayan Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   yearsGC:[],pendingYears:[2024],
+   priority:'medium',llm:true,
+   submittedDate:null,createdDate:'2025-04-04',
+   arWorkflow:{2024:{choice:'automated',status:'done',ts:'2025-04-04T08:30:00Z',by:'Nayan Jain'}}},
+
+  // Case 4a: AR manual upload + extraction AI + analyst overrode mapping -> 4-eye, PENDING_REVIEW
+  {id:'W013',coId:'CSV014',coName:'Amgen Inc',isin:'US0311621009',l0:'35',l0Name:'Health Care',
+   assignedTo:'Niloni Jain',type:'FRESH',wfStatus:'PENDING_REVIEW',completionStatus:'wip',
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023],pendingYears:[2024],
+   priority:'high',llm:true,
+   submittedDate:'2025-04-08',createdDate:'2025-04-05',submittedBy:'Niloni Jain',
+   arWorkflow:{2024:{choice:'automated',status:'done',ts:'2025-04-05T09:00:00Z',by:'Niloni Jain'}},
+   clsGate:{2024:{status:'accepted',ts:'2025-04-05T10:00:00Z',by:'Niloni Jain'}},
+   subThemeGate:{2024:{
+     0:{status:'finalized',originalL2:'350203',changed:true,reason:'AI mapped Enbrel to Generic Medicines but it is a branded biologic. Corrected to Biopharmaceuticals per page 12 which lists it under Inflammation as a proprietary product.',ts:'2025-04-05T11:00:00Z',by:'Niloni Jain'},
+     1:{status:'finalized',originalL2:'350201',changed:false,reason:null,ts:'2025-04-05T11:05:00Z',by:'Niloni Jain'},
+   }}},
+
+  // Case 4b: AR manual upload + extraction failed + fully manual -> 4-eye (highest scrutiny)
+  {id:'W014',coId:'CSV025',coName:'Infineon Technologies AG',isin:'DE0006231004',l0:'55',l0Name:'Information Technology',
+   assignedTo:'Niloni Jain',type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
+   yearsGC:[],pendingYears:[2024],
+   priority:'high',llm:false,
+   submittedDate:null,createdDate:'2025-04-06'},
 ];
 
 // ── GOLDEN DATA ───────────────────────────────────────────
 let GOLDEN = [
   {id:'G001',coId:'C008',coName:'Royal Bank of Canada',isin:'CA7800871021',l0:'10',l0Name:'Financials',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-03-01',pushedBy:'Samyak Jain',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-03-01',pushedBy:'Vivek Paliwal',invalidated:false,invYears:[]},
   {id:'G002',coId:'C011',coName:'Diageo PLC',isin:'GB0002374006',l0:'45',l0Name:'Consumer Staples',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-02-20',pushedBy:'Niloni Lodha',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-02-20',pushedBy:'Niloni Jain',invalidated:false,invYears:[]},
   {id:'G003',coId:'C012',coName:'Intuitive Surgical Inc',isin:'US46120E6023',l0:'35',l0Name:'Health Care',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-01-15',pushedBy:'Samyak Jain',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-01-15',pushedBy:'Vivek Paliwal',invalidated:false,invYears:[]},
   {id:'G004',coId:'C013',coName:'360 ONE WAM Ltd',isin:'INE466L01038',l0:'10',l0Name:'Financials',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-02-01',pushedBy:'Khushi Jain',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-02-01',pushedBy:'Vivek Paliwal',invalidated:false,invYears:[]},
   {id:'G005',coId:'C014',coName:'Compass Group PLC',isin:'GB00BD6K4575',l0:'40',l0Name:'Consumer Discretionary',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024],pushedDate:'2024-12-20',pushedBy:'Muskan Dak',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024],pushedDate:'2024-12-20',pushedBy:'Niloni Jain',invalidated:false,invYears:[]},
   {id:'G006',coId:'C002',coName:'Amazon Com Inc',isin:'US0231351067',l0:'40',l0Name:'Consumer Discretionary',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-03-10',pushedBy:'Divya Jain',invalidated:false,invYears:[]},
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024,2025],pushedDate:'2025-03-10',pushedBy:'Nayan Jain',invalidated:false,invYears:[]},
   {id:'G007',coId:'C009',coName:'Mitsubishi UFJ Financial Group',isin:'JP3902900004',l0:'10',l0Name:'Financials',
-   yearsGC:[2017,2018,2019,2020,2021,2022],pushedDate:'2024-08-15',pushedBy:'Samyak Jain',invalidated:true,invYears:[2023,2024]},
+   yearsGC:[2017,2018,2019,2020,2021,2022],pushedDate:'2024-08-15',pushedBy:'Vivek Paliwal',invalidated:true,invYears:[2023,2024]},
   {id:'G008',coId:'C015',coName:'LVMH Moet Hennessy Louis Vuitton',isin:'FR0000121014',l0:'40',l0Name:'Consumer Discretionary',
-   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024],pushedDate:'2024-11-30',pushedBy:'Niloni Lodha',invalidated:false,invYears:[]},
-  {id:'GC001',coId:'CSV001',coName:"360 ONE WAM Ltd",isin:"INE466L01038",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC002',coId:'CSV002',coName:"3I Group Plc",isin:"GB00B1YW4409",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC003',coId:'CSV003',coName:"3I Infrastructure PLC",isin:"JE00BF5FX167",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC004',coId:'CSV004',coName:"3M India Ltd",isin:"INE470A01017",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC005',coId:'CSV005',coName:"77 Bank Ltd",isin:"JP3352000008",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC006',coId:'CSV006',coName:"Adairs Ltd",isin:"AU000000ADH2",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC007',coId:'CSV007',coName:"Agl Energy Ltd",isin:"AU000000AGL7",l0:"20",l0Name:"Utilities",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC008',coId:'CSV008',coName:"Agnico Eagle Mines Ltd",isin:"CA0084741085",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC009',coId:'CSV009',coName:"Alkane Resources Ltd",isin:"AU000000ALK9",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC010',coId:'CSV010',coName:"Alphabet Inc",isin:"US02079K3059",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC011',coId:'CSV011',coName:"Als Ltd",isin:"AU000000ALQ6",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC012',coId:'CSV012',coName:"Alstom Sa",isin:"FR0010220475",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC013',coId:'CSV013',coName:"Amazon Com Inc",isin:"US0231351067",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC014',coId:'CSV014',coName:"Amgen Inc",isin:"US0311621009",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC015',coId:'CSV015',coName:"Amot Investments Ltd",isin:"IL0010972789",l0:"15",l0Name:"Real Estate",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC016',coId:'CSV016',coName:"Apple Inc",isin:"US0378331005",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC017',coId:'CSV017',coName:"Aurubis Ag",isin:"DE0006766504",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC018',coId:'CSV018',coName:"BARRICK MINING CORP",isin:"CA06849F1080",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC019',coId:'CSV019',coName:"Barry Callebaut Ag",isin:"CH0009002962",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC020',coId:'CSV020',coName:"Canadian National Railway Co",isin:"CA1363751027",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC021',coId:'CSV021',coName:"Comcast Corp",isin:"US20030N1019",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC022',coId:'CSV022',coName:"Compass Group Plc",isin:"GB00BD6K4575",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC023',coId:'CSV023',coName:"Diageo Plc",isin:"GB0002374006",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC024',coId:'CSV024',coName:"Hitachi Ltd",isin:"JP3788600009",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC025',coId:'CSV025',coName:"Infineon Technologies Ag",isin:"DE0006231004",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC026',coId:'CSV026',coName:"Intuitive Surgical Inc",isin:"US46120E6023",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC027',coId:'CSV027',coName:"Lvmh Moet Hennessy Louis Vuitton Se",isin:"FR0000121014",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC028',coId:'CSV028',coName:"Marriott International Inc",isin:"US5719032022",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC029',coId:'CSV029',coName:"Meta Platforms Inc",isin:"US30303M1027",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC030',coId:'CSV030',coName:"Mitsubishi Ufj Financial Group Inc",isin:"JP3902900004",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC031',coId:'CSV031',coName:"Netflix Inc",isin:"US64110L1061",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC032',coId:'CSV032',coName:"Novartis Ag",isin:"CH0012005267",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC033',coId:'CSV033',coName:"Nvidia Corp",isin:"US67066G1040",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC034',coId:'CSV034',coName:"Pernod Ricard Sa",isin:"FR0000120693",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC035',coId:'CSV035',coName:"Qualcomm Inc",isin:"US7475251036",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC036',coId:'CSV036',coName:"Roche Holding Ag",isin:"CH0012032113",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC037',coId:'CSV037',coName:"Royal Bank Of Canada",isin:"CA7800871021",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC038',coId:'CSV038',coName:"Royalty Pharma Plc",isin:"GB00BMVP7Y09",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC039',coId:'CSV039',coName:"Samsung Electronics Co Ltd",isin:"KR7005930003",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC040',coId:'CSV040',coName:"Schindler Holding Ag",isin:"CH0024638212",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC041',coId:'CSV041',coName:"Shinyoung Securities Co Ltd",isin:"KR7001720002",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC042',coId:'CSV042',coName:"Siemens Ag",isin:"DE0007236101",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC043',coId:'CSV043',coName:"Siemens Energy Ag",isin:"DE000ENER6Y0",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]},
-  {id:'GC044',coId:'CSV044',coName:"Starbucks Corp",isin:"US8552441094",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Saurabh Negi",invalidated:false,invYears:[]},
-  {id:'GC045',coId:'CSV045',coName:"Sumitomo Mitsui Financial Group Inc",isin:"JP3890350006",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Lodha",invalidated:false,invYears:[]},
-  {id:'GC046',coId:'CSV046',coName:"Tesco Plc",isin:"GB00BLGZ9862",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Suhani Maheshwari",invalidated:false,invYears:[]},
-  {id:'GC047',coId:'CSV047',coName:"Teva Pharmaceutical Industries Ltd",isin:"IL0006290147",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Khushi Jain",invalidated:false,invYears:[]},
-  {id:'GC048',coId:'CSV048',coName:"Toronto Dominion Bank",isin:"CA8911605092",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Muskan Dak",invalidated:false,invYears:[]},
-  {id:'GC049',coId:'CSV049',coName:"Toyota Motor Corp",isin:"JP3633400001",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Divya Jain",invalidated:false,invYears:[]},
-  {id:'GC050',coId:'CSV050',coName:"Vinci Sa",isin:"FR0000125486",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Samyak Jain",invalidated:false,invYears:[]}
+   yearsGC:[2017,2018,2019,2020,2021,2022,2023,2024],pushedDate:'2024-11-30',pushedBy:'Niloni Jain',invalidated:false,invYears:[]},
+  {id:'GC001',coId:'CSV001',coName:"360 ONE WAM Ltd",isin:"INE466L01038",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC002',coId:'CSV002',coName:"3I Group Plc",isin:"GB00B1YW4409",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC003',coId:'CSV003',coName:"3I Infrastructure PLC",isin:"JE00BF5FX167",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC004',coId:'CSV004',coName:"3M India Ltd",isin:"INE470A01017",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC005',coId:'CSV005',coName:"77 Bank Ltd",isin:"JP3352000008",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC006',coId:'CSV006',coName:"Adairs Ltd",isin:"AU000000ADH2",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC007',coId:'CSV007',coName:"Agl Energy Ltd",isin:"AU000000AGL7",l0:"20",l0Name:"Utilities",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC008',coId:'CSV008',coName:"Agnico Eagle Mines Ltd",isin:"CA0084741085",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC009',coId:'CSV009',coName:"Alkane Resources Ltd",isin:"AU000000ALK9",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC010',coId:'CSV010',coName:"Alphabet Inc",isin:"US02079K3059",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC011',coId:'CSV011',coName:"Als Ltd",isin:"AU000000ALQ6",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC012',coId:'CSV012',coName:"Alstom Sa",isin:"FR0010220475",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC013',coId:'CSV013',coName:"Amazon Com Inc",isin:"US0231351067",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC014',coId:'CSV014',coName:"Amgen Inc",isin:"US0311621009",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC015',coId:'CSV015',coName:"Amot Investments Ltd",isin:"IL0010972789",l0:"15",l0Name:"Real Estate",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC016',coId:'CSV016',coName:"Apple Inc",isin:"US0378331005",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC017',coId:'CSV017',coName:"Aurubis Ag",isin:"DE0006766504",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC018',coId:'CSV018',coName:"BARRICK MINING CORP",isin:"CA06849F1080",l0:"60",l0Name:"Materials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC019',coId:'CSV019',coName:"Barry Callebaut Ag",isin:"CH0009002962",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC020',coId:'CSV020',coName:"Canadian National Railway Co",isin:"CA1363751027",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC021',coId:'CSV021',coName:"Comcast Corp",isin:"US20030N1019",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC022',coId:'CSV022',coName:"Compass Group Plc",isin:"GB00BD6K4575",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC023',coId:'CSV023',coName:"Diageo Plc",isin:"GB0002374006",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC024',coId:'CSV024',coName:"Hitachi Ltd",isin:"JP3788600009",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC025',coId:'CSV025',coName:"Infineon Technologies Ag",isin:"DE0006231004",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC026',coId:'CSV026',coName:"Intuitive Surgical Inc",isin:"US46120E6023",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC027',coId:'CSV027',coName:"Lvmh Moet Hennessy Louis Vuitton Se",isin:"FR0000121014",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC028',coId:'CSV028',coName:"Marriott International Inc",isin:"US5719032022",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC029',coId:'CSV029',coName:"Meta Platforms Inc",isin:"US30303M1027",l0:"50",l0Name:"Communication Services",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC030',coId:'CSV030',coName:"Mitsubishi Ufj Financial Group Inc",isin:"JP3902900004",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC031',coId:'CSV031',coName:"Netflix Inc",isin:"US64110L1061",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC032',coId:'CSV032',coName:"Novartis Ag",isin:"CH0012005267",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC033',coId:'CSV033',coName:"Nvidia Corp",isin:"US67066G1040",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC034',coId:'CSV034',coName:"Pernod Ricard Sa",isin:"FR0000120693",l0:"45",l0Name:"Consumer Staples",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC035',coId:'CSV035',coName:"Qualcomm Inc",isin:"US7475251036",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC036',coId:'CSV036',coName:"Roche Holding Ag",isin:"CH0012032113",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC037',coId:'CSV037',coName:"Royal Bank Of Canada",isin:"CA7800871021",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC038',coId:'CSV038',coName:"Royalty Pharma Plc",isin:"GB00BMVP7Y09",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC039',coId:'CSV039',coName:"Samsung Electronics Co Ltd",isin:"KR7005930003",l0:"55",l0Name:"Information Technology",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC040',coId:'CSV040',coName:"Schindler Holding Ag",isin:"CH0024638212",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC041',coId:'CSV041',coName:"Shinyoung Securities Co Ltd",isin:"KR7001720002",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC042',coId:'CSV042',coName:"Siemens Ag",isin:"DE0007236101",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC043',coId:'CSV043',coName:"Siemens Energy Ag",isin:"DE000ENER6Y0",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC044',coId:'CSV044',coName:"Starbucks Corp",isin:"US8552441094",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC045',coId:'CSV045',coName:"Sumitomo Mitsui Financial Group Inc",isin:"JP3890350006",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC046',coId:'CSV046',coName:"Tesco Plc",isin:"GB00BLGZ9862",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC047',coId:'CSV047',coName:"Teva Pharmaceutical Industries Ltd",isin:"IL0006290147",l0:"35",l0Name:"Health Care",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]},
+  {id:'GC048',coId:'CSV048',coName:"Toronto Dominion Bank",isin:"CA8911605092",l0:"10",l0Name:"Financials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Niloni Jain",invalidated:false,invYears:[]},
+  {id:'GC049',coId:'CSV049',coName:"Toyota Motor Corp",isin:"JP3633400001",l0:"40",l0Name:"Consumer Discretionary",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Nayan Jain",invalidated:false,invYears:[]},
+  {id:'GC050',coId:'CSV050',coName:"Vinci Sa",isin:"FR0000125486",l0:"30",l0Name:"Industrials",yearsGC:[2023,2024,2025],pushedDate:'2025-01-15',pushedBy:"Vivek Paliwal",invalidated:false,invYears:[]}
 ];
 
 // ── CLASSIFICATION DATA ───────────────────────────────────
@@ -1250,7 +1299,7 @@ const CLSDATA = {
   },
   'CSV014': {
     2023: { l0:"35", segments: [{label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:4.54,cls:"Marginal",pg:0,llm:false}, {label:"Cancer Novel Target",l1:"3502",l1n:"Pharmaceuticals",l2:"350204",l2n:"Cancer Novel Target",rev:0,pct:11.52,cls:"Marginal",pg:0,llm:false}, {label:"Cardiovascular",l1:"3502",l1n:"Pharmaceuticals",l2:"350219",l2n:"Cardiovascular",rev:0,pct:5.8,cls:"Marginal",pg:0,llm:false}, {label:"Infection and Inflammation Drugs",l1:"3502",l1n:"Pharmaceuticals",l2:"350207",l2n:"Infection and Inflammation Drugs",rev:0,pct:21.84,cls:"Quasi",pg:0,llm:false}, {label:"Pharmaceuticals",l1:"3502",l1n:"Pharmaceuticals",l2:"350201",l2n:"Pharmaceuticals",rev:0,pct:56.3,cls:"Pure Play",pg:0,llm:false}] },
-    2024: { l0:"35", segments: [{label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:4.18,cls:"Marginal",pg:0,llm:false}, {label:"Cancer Novel Target",l1:"3502",l1n:"Pharmaceuticals",l2:"350204",l2n:"Cancer Novel Target",rev:0,pct:11.26,cls:"Marginal",pg:0,llm:false}, {label:"Cardiovascular",l1:"3502",l1n:"Pharmaceuticals",l2:"350219",l2n:"Cardiovascular",rev:0,pct:6.65,cls:"Marginal",pg:0,llm:false}, {label:"Infection and Inflammation Drugs",l1:"3502",l1n:"Pharmaceuticals",l2:"350207",l2n:"Infection and Inflammation Drugs",rev:0,pct:19.83,cls:"Marginal",pg:0,llm:false}, {label:"Pharmaceuticals",l1:"3502",l1n:"Pharmaceuticals",l2:"350201",l2n:"Pharmaceuticals",rev:0,pct:58.08,cls:"Pure Play",pg:0,llm:false}] },
+    2024: { l0:"35", segments: [{label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:1.4,pct:4.18,cls:"Marginal",pg:0,llm:true}, {label:"Cancer Novel Target",l1:"3502",l1n:"Pharmaceuticals",l2:"350204",l2n:"Cancer Novel Target",rev:3.7,pct:11.26,cls:"Marginal",pg:0,llm:true}, {label:"Cardiovascular",l1:"3502",l1n:"Pharmaceuticals",l2:"350219",l2n:"Cardiovascular",rev:2.2,pct:6.65,cls:"Marginal",pg:0,llm:true}, {label:"Infection and Inflammation Drugs",l1:"3502",l1n:"Pharmaceuticals",l2:"350207",l2n:"Infection and Inflammation Drugs",rev:6.6,pct:19.83,cls:"Marginal",pg:0,llm:true}, {label:"Pharmaceuticals",l1:"3502",l1n:"Pharmaceuticals",l2:"350201",l2n:"Pharmaceuticals",rev:19.3,pct:58.08,cls:"Pure Play",pg:0,llm:true}] },
     2025: { l0:"35", segments: [{label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:4.36,cls:"Marginal",pg:0,llm:false}, {label:"Cancer Novel Target",l1:"3502",l1n:"Pharmaceuticals",l2:"350204",l2n:"Cancer Novel Target",rev:0,pct:11.28,cls:"Marginal",pg:0,llm:false}, {label:"Cardiovascular",l1:"3502",l1n:"Pharmaceuticals",l2:"350219",l2n:"Cardiovascular",rev:0,pct:8.21,cls:"Marginal",pg:0,llm:false}, {label:"Infection and Inflammation Drugs",l1:"3502",l1n:"Pharmaceuticals",l2:"350207",l2n:"Infection and Inflammation Drugs",rev:0,pct:15.87,cls:"Marginal",pg:0,llm:false}, {label:"Pharmaceuticals",l1:"3502",l1n:"Pharmaceuticals",l2:"350201",l2n:"Pharmaceuticals",rev:0,pct:60.28,cls:"Pure Play",pg:0,llm:false}] }
   },
   'CSV015': {
@@ -1390,7 +1439,7 @@ const CLSDATA = {
   },
   'CSV042': {
     2023: { l0:"30", segments: [{label:"Specialty Financing",l1:"1003",l1n:"Financial Services",l2:"100302",l2n:"Specialty Financing",rev:0,pct:0.57,cls:"Marginal",pg:0,llm:false}, {label:"Healthcare Services/Products",l1:"3501",l1n:"Healthcare Services/Products",l2:"350101",l2n:"Healthcare Services/Products",rev:0,pct:27.74,cls:"Quasi",pg:0,llm:false}, {label:"IT Services",l1:"5501",l1n:"IT Services",l2:"550101",l2n:"IT Services",rev:0,pct:4.0,cls:"Marginal",pg:0,llm:false}, {label:"Autonomous System",l1:"3006",l1n:"Industrial Machinery",l2:"300604",l2n:"Autonomous System",rev:0,pct:27.62,cls:"Quasi",pg:0,llm:false}, {label:"Other Unallocated/ Eliminated Revenue",l1:"6501",l1n:"Others",l2:"650102",l2n:"Other Unallocated/ Eliminated Revenue",rev:0,pct:1.37,cls:"Marginal",pg:0,llm:false}, {label:"Software and Hardware",l1:"5504",l1n:"Software",l2:"550413",l2n:"Software and Hardware",rev:0,pct:25.16,cls:"Quasi",pg:0,llm:false}, {label:"Locomotive and Related Parts Manufacturer",l1:"3010",l1n:"Transportation Vehicles and Related Parts Manufacturer",l2:"301002",l2n:"Locomotive and Related Parts Manufacturer",rev:0,pct:13.55,cls:"Marginal",pg:0,llm:false}] },
-    2024: { l0:"30", segments: [{label:"Power Generators and Motors",l1:"3004",l1n:"Electrical Equipment",l2:"300406",l2n:"Power Generators and Motors",rev:0,pct:3.66,cls:"Marginal",pg:0,llm:false}, {label:"Specialty Financing",l1:"1003",l1n:"Financial Services",l2:"100302",l2n:"Specialty Financing",rev:0,pct:0.49,cls:"Marginal",pg:0,llm:false}, {label:"Healthcare Services/Products",l1:"3501",l1n:"Healthcare Services/Products",l2:"350101",l2n:"Healthcare Services/Products",rev:0,pct:28.31,cls:"Quasi",pg:0,llm:false}, {label:"Autonomous System",l1:"3006",l1n:"Industrial Machinery",l2:"300604",l2n:"Autonomous System",rev:0,pct:23.04,cls:"Quasi",pg:0,llm:false}, {label:"Other Unallocated/ Eliminated Revenue",l1:"6501",l1n:"Others",l2:"650102",l2n:"Other Unallocated/ Eliminated Revenue",rev:0,pct:3.38,cls:"Marginal",pg:0,llm:false}, {label:"Software and Hardware",l1:"5504",l1n:"Software",l2:"550413",l2n:"Software and Hardware",rev:0,pct:26.65,cls:"Quasi",pg:0,llm:false}, {label:"Locomotive and Related Parts Manufacturer",l1:"3010",l1n:"Transportation Vehicles and Related Parts Manufacturer",l2:"301002",l2n:"Locomotive and Related Parts Manufacturer",rev:0,pct:14.47,cls:"Marginal",pg:0,llm:false}] },
+    2024: { l0:"30", segments: [{label:"Power Generators and Motors",l1:"3004",l1n:"Electrical Equipment",l2:"300406",l2n:"Power Generators and Motors",rev:2.3,pct:3.66,cls:"Marginal",pg:0,llm:true}, {label:"Specialty Financing",l1:"1003",l1n:"Financial Services",l2:"100302",l2n:"Specialty Financing",rev:0.3,pct:0.49,cls:"Marginal",pg:0,llm:true}, {label:"Healthcare Services/Products",l1:"3501",l1n:"Healthcare Services/Products",l2:"350101",l2n:"Healthcare Services/Products",rev:17.5,pct:28.31,cls:"Quasi",pg:0,llm:true}, {label:"Autonomous System",l1:"3006",l1n:"Industrial Machinery",l2:"300604",l2n:"Autonomous System",rev:14.2,pct:23.04,cls:"Quasi",pg:0,llm:true}, {label:"Other Unallocated/ Eliminated Revenue",l1:"6501",l1n:"Others",l2:"650102",l2n:"Other Unallocated/ Eliminated Revenue",rev:2.1,pct:3.38,cls:"Marginal",pg:0,llm:true}, {label:"Software and Hardware",l1:"5504",l1n:"Software",l2:"550413",l2n:"Software and Hardware",rev:16.5,pct:26.65,cls:"Quasi",pg:0,llm:true}, {label:"Locomotive and Related Parts Manufacturer",l1:"3010",l1n:"Transportation Vehicles and Related Parts Manufacturer",l2:"301002",l2n:"Locomotive and Related Parts Manufacturer",rev:8.9,pct:14.47,cls:"Marginal",pg:0,llm:true}] },
     2025: { l0:"30", segments: [{label:"Specialty Financing",l1:"1003",l1n:"Financial Services",l2:"100302",l2n:"Specialty Financing",rev:0,pct:0.44,cls:"Marginal",pg:0,llm:false}, {label:"Healthcare Services/Products",l1:"3501",l1n:"Healthcare Services/Products",l2:"350101",l2n:"Healthcare Services/Products",rev:0,pct:29.6,cls:"Quasi",pg:0,llm:false}, {label:"Autonomous System",l1:"3006",l1n:"Industrial Machinery",l2:"300604",l2n:"Autonomous System",rev:0,pct:22.14,cls:"Quasi",pg:0,llm:false}, {label:"Other Unallocated/ Eliminated Revenue",l1:"6501",l1n:"Others",l2:"650102",l2n:"Other Unallocated/ Eliminated Revenue",rev:0,pct:3.35,cls:"Marginal",pg:0,llm:false}, {label:"Software and Hardware",l1:"5504",l1n:"Software",l2:"550413",l2n:"Software and Hardware",rev:0,pct:28.71,cls:"Quasi",pg:0,llm:false}, {label:"Locomotive and Related Parts Manufacturer",l1:"3010",l1n:"Transportation Vehicles and Related Parts Manufacturer",l2:"301002",l2n:"Locomotive and Related Parts Manufacturer",rev:0,pct:15.77,cls:"Marginal",pg:0,llm:false}] }
   },
   'CSV043': {
@@ -1425,7 +1474,7 @@ const CLSDATA = {
   },
   'CSV049': {
     2023: { l0:"40", segments: [{label:"Automobile Financing",l1:"1003",l1n:"Financial Services",l2:"100303",l2n:"Automobile Financing",rev:0,pct:7.5,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Oem Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400909",l2n:"Motor Vehicle Oem Manufacturer",rev:0,pct:4.6,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Parts and Accessories Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400910",l2n:"Motor Vehicle Parts and Accessories Manufacturer",rev:0,pct:7.71,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle and Parts Manufacturers",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400901",l2n:"Motor Vehicle and Parts Manufacturers",rev:0,pct:78.59,cls:"Pure Play",pg:0,llm:false}, {label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:1.59,cls:"Marginal",pg:0,llm:false}] },
-    2024: { l0:"40", segments: [{label:"Automobile Financing",l1:"1003",l1n:"Financial Services",l2:"100303",l2n:"Automobile Financing",rev:0,pct:7.64,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Oem Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400909",l2n:"Motor Vehicle Oem Manufacturer",rev:0,pct:3.54,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Parts and Accessories Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400910",l2n:"Motor Vehicle Parts and Accessories Manufacturer",rev:0,pct:7.02,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle and Parts Manufacturers",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400901",l2n:"Motor Vehicle and Parts Manufacturers",rev:0,pct:80.54,cls:"Pure Play",pg:0,llm:false}, {label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:1.26,cls:"Marginal",pg:0,llm:false}] },
+    2024: { l0:"40", segments: [{label:"Automobile Financing",l1:"1003",l1n:"Financial Services",l2:"100303",l2n:"Automobile Financing",rev:20.9,pct:7.64,cls:"Marginal",pg:0,llm:true}, {label:"Motor Vehicle Oem Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400909",l2n:"Motor Vehicle Oem Manufacturer",rev:9.7,pct:3.54,cls:"Marginal",pg:0,llm:true}, {label:"Motor Vehicle Parts and Accessories Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400910",l2n:"Motor Vehicle Parts and Accessories Manufacturer",rev:19.2,pct:7.02,cls:"Marginal",pg:0,llm:true}, {label:"Motor Vehicle and Parts Manufacturers",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400901",l2n:"Motor Vehicle and Parts Manufacturers",rev:220.7,pct:80.54,cls:"Pure Play",pg:0,llm:true}, {label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:3.5,pct:1.26,cls:"Marginal",pg:0,llm:true}] },
     2025: { l0:"40", segments: [{label:"Automobile Financing",l1:"1003",l1n:"Financial Services",l2:"100303",l2n:"Automobile Financing",rev:0,pct:9.24,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Oem Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400909",l2n:"Motor Vehicle Oem Manufacturer",rev:0,pct:3.34,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle Parts and Accessories Manufacturer",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400910",l2n:"Motor Vehicle Parts and Accessories Manufacturer",rev:0,pct:7.13,cls:"Marginal",pg:0,llm:false}, {label:"Motor Vehicle and Parts Manufacturers",l1:"4009",l1n:"Motor vehicle and Parts Manufacturers",l2:"400901",l2n:"Motor Vehicle and Parts Manufacturers",rev:0,pct:79.04,cls:"Pure Play",pg:0,llm:false}, {label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:1.25,cls:"Marginal",pg:0,llm:false}] }
   },
   'CSV050': {
@@ -1433,6 +1482,8 @@ const CLSDATA = {
     2024: { l0:"30", segments: [{label:"Construction Services",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300702",l2n:"Construction Services",rev:0,pct:44.11,cls:"Quasi",pg:0,llm:false}, {label:"Energy Infrastructure Provider",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300703",l2n:"Energy Infrastructure Provider",rev:0,pct:38.13,cls:"Quasi",pg:0,llm:false}, {label:"Infrastructure Development and Related Services",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300701",l2n:"Infrastructure Development and Related Services",rev:0,pct:0.75,cls:"Marginal",pg:0,llm:false}, {label:"Road and Related Infrastructure Operators",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300704",l2n:"Road and Related Infrastructure Operators",rev:0,pct:9.14,cls:"Marginal",pg:0,llm:false}, {label:"Commercial and Residential Real Estate Developer",l1:"1501",l1n:"Real Estate",l2:"150122",l2n:"Commercial and Residential Real Estate Developer",rev:0,pct:1.59,cls:"Marginal",pg:0,llm:false}, {label:"Airport Operation and Complimentary Services",l1:"3011",l1n:"Transportation/ Aviation and Space Travel Related Services",l2:"301105",l2n:"Airport Operation and Complimentary Services",rev:0,pct:6.28,cls:"Marginal",pg:0,llm:false}] },
     2025: { l0:"30", segments: [{label:"Construction Services",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300702",l2n:"Construction Services",rev:0,pct:42.81,cls:"Quasi",pg:0,llm:false}, {label:"Energy Infrastructure Provider",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300703",l2n:"Energy Infrastructure Provider",rev:0,pct:39.44,cls:"Quasi",pg:0,llm:false}, {label:"Road and Related Infrastructure Operators",l1:"3007",l1n:"Infrastructure Development and Related Services",l2:"300704",l2n:"Road and Related Infrastructure Operators",rev:0,pct:8.97,cls:"Marginal",pg:0,llm:false}, {label:"Others",l1:"6501",l1n:"Others",l2:"650101",l2n:"Others",rev:0,pct:0.92,cls:"Marginal",pg:0,llm:false}, {label:"Commercial and Residential Real Estate Developer",l1:"1501",l1n:"Real Estate",l2:"150122",l2n:"Commercial and Residential Real Estate Developer",rev:0,pct:1.47,cls:"Marginal",pg:0,llm:false}, {label:"Airport Operation and Complimentary Services",l1:"3011",l1n:"Transportation/ Aviation and Space Travel Related Services",l2:"301105",l2n:"Airport Operation and Complimentary Services",rev:0,pct:6.39,cls:"Marginal",pg:0,llm:false}] }
   }
+
+
 
 };
 
@@ -1514,14 +1565,14 @@ let CORP_ACTIONS = [
 
 // ── AUDIT LOG ─────────────────────────────────────────────
 let AUDIT = [
-  {id:'AL001',user:'Rakshit Lodha',role:'analyst',action:'Submitted for QC',co:'Alphabet Inc',year:'2023',ts:'2025-03-18 14:32',detail:'Submitted FY2023 — 4 segments, 3 Automation-extracted. Total revenue USD 308.6B.'},
-  {id:'AL002',user:'Samyak Jain',role:'qc',action:'QC Rejected (1st)',co:'Nvidia Corp',year:'2018',ts:'2025-03-17 11:20',detail:'Revenue segmentation mismatch on p.22. Data Center/Gaming split appears transposed. Returned to analyst.'},
-  {id:'AL003',user:'System',role:'system',action:'Auto-Assigned (Round-Robin)',co:'Apple Inc',year:'—',ts:'2025-03-10 08:00',detail:'Auto-assigned to Rakshit Lodha via Round-Robin (least loaded analyst).'},
+  {id:'AL001',user:'Vivek Paliwal',role:'analyst',action:'Submitted for QC',co:'Alphabet Inc',year:'2023',ts:'2025-03-18 14:32',detail:'Submitted FY2023 — 4 segments, 3 Automation-extracted. Total revenue USD 308.6B.'},
+  {id:'AL002',user:'Vivek Paliwal',role:'analyst',action:'Rejected (2nd Review)',co:'Nvidia Corp',year:'2018',ts:'2025-03-17 11:20',detail:'Revenue segmentation mismatch on p.22. Data Center/Gaming split appears transposed. Returned to analyst.'},
+  {id:'AL003',user:'System',role:'system',action:'Auto-Assigned (Round-Robin)',co:'Apple Inc',year:'—',ts:'2025-03-10 08:00',detail:'Auto-assigned to Vivek Paliwal via Round-Robin (least loaded analyst).'},
   {id:'AL004',user:'Santosh J Shetti',role:'rm',action:'Approved Invalidation',co:'Mitsubishi UFJ Financial Group',year:'2023,2024',ts:'2025-03-19 17:02',detail:'Invalidation approved for FY2023–2024. Company moved to Workbench with Invalidated from GC status.'},
-  {id:'AL005',user:'Niloni Lodha',role:'qc',action:'Escalated to Committee (2nd Rejection)',co:'Meta Platforms Inc',year:'2024',ts:'2025-03-15 13:55',detail:'Reality Labs classification disputed. Second QC rejection — escalated to ITICS Committee per workflow.'},
-  {id:'AL006',user:'Ishani Suthar',role:'analyst',action:'Submitted for QC',co:'Novartis AG',year:'2017–2024',ts:'2025-03-20 09:15',detail:'All years 2017–2024 submitted for QC review. 8 year-batches across Innovative Medicines and Sandoz segments.'},
-  {id:'AL007',user:'Rakshit Lodha',role:'analyst',action:'Saved Draft',co:'Apple Inc',year:'2021',ts:'2025-03-22 10:30',detail:'Draft saved for FY2021.'},
-  {id:'AL008',user:'Samyak Jain',role:'qc',action:'QC Accepted → Pushed to GC',co:'Royal Bank of Canada',year:'2017–2025',ts:'2025-03-01 16:40',detail:'All years 2017–2025 accepted. Pushed to Golden Copy.'},
+  {id:'AL005',user:'Niloni Jain',role:'analyst',action:'Escalated to Committee',co:'Meta Platforms Inc',year:'2024',ts:'2025-03-15 13:55',detail:'Reality Labs classification disputed. Second QC rejection — escalated to ITICS Committee per workflow.'},
+  {id:'AL006',user:'Nayan Jain',role:'analyst',action:'Submitted for QC',co:'Novartis AG',year:'2017–2024',ts:'2025-03-20 09:15',detail:'All years 2017–2024 submitted for QC review. 8 year-batches across Innovative Medicines and Sandoz segments.'},
+  {id:'AL007',user:'Vivek Paliwal',role:'analyst',action:'Saved Draft',co:'Apple Inc',year:'2021',ts:'2025-03-22 10:30',detail:'Draft saved for FY2021.'},
+  {id:'AL008',user:'Vivek Paliwal',role:'analyst',action:'Approved → Pushed to GC',co:'Royal Bank of Canada',year:'2017–2025',ts:'2025-03-01 16:40',detail:'All years 2017–2025 accepted. Pushed to Golden Copy.'},
 ];
 
 // ── DECISION LOG ──────────────────────────────────────────
@@ -1618,12 +1669,12 @@ function getL0Name(c) { return TAX.L0.find(x=>x.c===c)?.n || c; }
 function wfBadge(status, rejCount=0, rejected=false) {
   const labels = {
     pending_analyst:   ['Pending Analyst',   'bw-analyst'],
-    pending_qc:        ['Pending QC',        'bw-qc'],
+    pending_qc:        ['Ready for GC',      'bw-qc'],
     pending_committee: ['Pending IC', 'bw-committee'],
     complete_gc:       ['Completed',      'bw-gc'],
   };
   const [label, cls] = labels[status] || [status, 'bc-unassigned'];
-  const rejFlag = (rejected || rejCount>0) ? ` <span style="display:inline-flex;align-items:center;gap:2px;font-size:9px;padding:1px 5px;border-radius:3px;background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);margin-left:4px">${rejCount>1?rejCount+'x ':''}Rejected</span>` : '';
+  const rejFlag = '';
   return `<span class="badge ${cls}">${label}</span>${rejFlag}`;
 }
 function typeBadge(type) {
@@ -1679,6 +1730,18 @@ const CLS_ISSUE_LABELS = [
   "Revenue % Doesn't Reconcile",
   'Wrong Page Reference',
   'Wrong Fiscal Year Data',
+  'Other',
+];
+// Issue categories specific to Metadata (extracted alongside classification from the AR)
+const META_ISSUE_LABELS = [
+  'Wrong Business Description',
+  'Incorrect Company Name',
+  'Wrong Country / Incorporation Details',
+  'Incorrect FY End Date / Period',
+  'Wrong Revenue Currency or Unit',
+  'Incorrect Website / Investor Contact',
+  'Wrong SEDOL or Identifier',
+  'Mismatched Fiscal Year',
   'Other',
 ];
 function prioBadge(p) {
@@ -1765,48 +1828,75 @@ function refreshBadges() {}
 // ROLE MANAGEMENT
 // ═══════════════════════════════════════════════════════════
 function openRoleModal() {
+  const analysts = ROLE_USERS.analyst;
+  const rm    = ROLE_USERS.rm[0];
+  const admin = ROLE_USERS.admin[0];
+  function personCard(role, user) {
+    const r = ROLE_DEF[role];
+    const isActive = currentRole===role && currentUser.name===user.name;
+    const bg  = isActive ? 'var(--bg2)' : 'transparent';
+    const bd  = isActive ? 'var(--border3)' : 'var(--border2)';
+    return `<div onclick="setRole('${role}','${user.name}')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--radius);border:1px solid ${bd};cursor:pointer;background:${bg};transition:all 0.1s"
+      onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='${isActive?'var(--bg2)':'transparent'}'">
+      <div style="width:34px;height:34px;border-radius:50%;background:${r.bg};border:1.5px solid ${r.tc};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${r.tc};flex-shrink:0">${user.initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:6px">
+          ${user.name}
+          ${isActive?`<span style="color:var(--green);font-size:10px">✓ Active</span>`:''}
+        </div>
+        <div style="font-size:11px;color:var(--txt3);margin-top:1px">${r.label} · ${getRoleDesc(role)}</div>
+      </div>
+    </div>`;
+  }
   showModal(`
   <div class="m-hd">
-    <div><div class="m-title">Switch Role</div><div class="m-sub">Prototype — simulate different user roles</div></div>
+    <div><div class="m-title">Switch Login</div><div class="m-sub">ITICS team — 3 analysts, 1 RM, 1 Admin</div></div>
     <button class="m-close" onclick="closeModal()">✕</button>
   </div>
   <div class="m-body">
-    <div style="display:flex;flex-direction:column;gap:8px">
-      ${Object.entries(ROLE_DEF).map(([k,r]) => {
-        const u = ROLE_USERS[k]?.[0];
-        if (!u) return '';
-        return `
-        <div onclick="setRole('${k}')"
-          style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--radius);border:1px solid ${currentRole===k?'var(--border3)':'var(--border2)'};cursor:pointer;background:${currentRole===k?'var(--bg2)':'transparent'};transition:all 0.1s"
-          onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='${currentRole===k?'var(--bg2)':'transparent'}'"
-        >
-          <div style="width:34px;height:34px;border-radius:50%;background:${r.bg};border:1.5px solid ${r.tc};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${r.icon}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:6px">
-              ${r.label}
-              <span style="font-size:10.5px;font-family:var(--mono);color:var(--txt3);font-weight:400">${u.name}</span>
-            </div>
-            <div style="font-size:11.5px;color:var(--txt3);margin-top:1px">${getRoleDesc(k)}</div>
-          </div>
-          ${currentRole===k?`<span style="color:var(--green);font-size:11px;flex-shrink:0">✓ Active</span>`:''}
-        </div>`;
-      }).join('')}
+    <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--txt3);margin-bottom:6px">ITICS Analysts</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${analysts.map(u=>personCard('analyst',u)).join('')}
+    </div>
+    <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--txt3);margin:14px 0 6px">Management</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${personCard('rm',rm)}
+      ${personCard('admin',admin)}
     </div>
   </div>
   `, 'm-sm');
 }
 function getRoleDesc(r) {
   return {
-    analyst:   'Works on assigned companies, submits for QC review',
-    qc:        'Reviews submissions — accept or reject with mandatory comment',
-    committee: 'Resolves 2nd-rejection escalations, returns to analyst',
-    rm:        'Full platform access — companies, levels, invalidations',
+    analyst:   'Classifies filings, reviews AI extraction and mapping, 2nd-eye on manual cases',
+    rm:        'Full platform access · triggers downloads, manages companies and levels',
+    admin:     'Platform administration · user management, system settings',
     admin:     'Platform administration — user management, system settings',
   }[r] || '';
 }
-function setRole(role) {
+
+// Admin-only download guard — returns HTML string only for admin role
+function adminBtn(html) { return currentRole === 'admin' ? html : ''; }
+function applySidebarVisibility() {
+  const isAnalyst = currentRole === 'analyst';
+  const isAdmin   = currentRole === 'admin';
+  document.querySelectorAll('[data-hide-analyst]').forEach(function(el) {
+    el.style.display = isAnalyst ? 'none' : '';
+  });
+  document.querySelectorAll('[data-admin-only]').forEach(function(el) {
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  // Redirect if current page is not accessible for this role
+  const analystHidden = ['golden','automation','reports','audit'];
+  const adminOnly     = ['screener','reports','golden'];
+  if (isAnalyst && analystHidden.indexOf(currentPage) !== -1) nav('dashboard');
+  if (!isAdmin  && adminOnly.indexOf(currentPage) !== -1)    nav('dashboard');
+}
+function setRole(role, userName) {
+  if (!ROLE_DEF[role]) role = 'analyst';
   currentRole = role;
-  const u = ROLE_USERS[role]?.[0];
+  const users = ROLE_USERS[role] || [];
+  const u = (userName ? users.find(function(x){return x.name===userName;}) : null) || users[0];
   if (!u) return;
   currentUser = { name: u.name, initials: u.initials, role };
   const r = ROLE_DEF[role];
@@ -1821,8 +1911,16 @@ function setRole(role) {
   closeModal();
   toast('Switched to ' + r.label + ' · ' + u.name, 'info');
   refreshBadges();
+  applySidebarVisibility();
   // Navigate to dashboard when switching roles (always fresh start)
   nav('dashboard');
+}
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('sb-toggle');
+  const collapsed = sb.classList.toggle('collapsed');
+  if (btn) btn.textContent = collapsed ? '☰' : '☰';
+  localStorage.setItem('sb-collapsed', collapsed ? '1' : '');
 }
 function toggleTheme() {
   darkMode = !darkMode;
@@ -1833,219 +1931,358 @@ function toggleTheme() {
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
+
+// ── AR Publish Date Watch ─────────────────────────────────────────────────
+// Source: Publish Date Calendar maintained by ITICS team.
+// lastPub = date company published its AR in the most recent known cycle.
+// expectedDate = lastPub + 1 year = when this year's AR is expected.
+// Red flag: expectedDate <= today AND company not yet in GC for this year.
+// Today in this prototype = July 20, 2026.
+const AR_WATCH_TODAY = '2026-07-20';
+const AR_WATCH_DATA = [
+  // Overdue — expected Jul 15-17, 2026 (not yet arrived)
+  {name:'Bharat Forge Ltd',           isin:'INE465A01025', country:'IN', lastPub:'2025-07-15', fy:'Mar-31'},
+  {name:'Union Bank Of India',         isin:'INE692A01016', country:'IN', lastPub:'2025-07-15', fy:'Mar-31'},
+  {name:'Carborundum Universal Ltd',   isin:'INE120A01034', country:'IN', lastPub:'2025-07-15', fy:'Mar-31'},
+  {name:'Halfords Group Plc',          isin:'GB00B012TP20', country:'GB', lastPub:'2025-07-15', fy:'Mar-28'},
+  {name:'Godrej Consumer Products Ltd',isin:'INE102D01028', country:'IN', lastPub:'2025-07-16', fy:'Mar-31'},
+  {name:'Au Small Finance Bank Ltd',   isin:'INE949L01017', country:'IN', lastPub:'2025-07-16', fy:'Mar-31'},
+  {name:'Wockhardt Ltd',               isin:'INE049B01025', country:'IN', lastPub:'2025-07-16', fy:'Mar-31'},
+  {name:'Arvind Ltd',                  isin:'INE034A01011', country:'IN', lastPub:'2025-07-16', fy:'Mar-31'},
+  {name:'CELLO WORLD LTD',             isin:'INE0LMW01024', country:'IN', lastPub:'2025-07-17', fy:'Mar-31'},
+  {name:'Usha Martin Ltd',             isin:'US9173001051', country:'IN', lastPub:'2025-07-17', fy:'Mar-31'},
+  {name:'Reliance Infrastructure Ltd', isin:'INE036A01016', country:'IN', lastPub:'2025-07-17', fy:'Mar-31'},
+  // Due today — expected Jul 18-20, 2026
+  {name:'Nike Inc',                    isin:'US6541061031', country:'US', lastPub:'2025-07-18', fy:'May-31'},
+  {name:'Alkem Laboratories Ltd',      isin:'INE540L01014', country:'IN', lastPub:'2025-07-18', fy:'Mar-31'},
+  {name:'Amber Enterprises India Ltd', isin:'INE371P01015', country:'IN', lastPub:'2025-07-18', fy:'Mar-31'},
+  {name:'Currys Plc',                  isin:'GB00B4Y7R145', country:'GB', lastPub:'2025-07-18', fy:'May-03'},
+  {name:'Godrej Industries Ltd',       isin:'INE233A01035', country:'IN', lastPub:'2025-07-18', fy:'Mar-31'},
+  {name:'AMARA RAJA ENERGY & MOBILITY',isin:'INE885A01032', country:'IN', lastPub:'2025-07-19', fy:'Mar-31'},
+  {name:'Avanti Feeds Ltd',            isin:'INE871C01038', country:'IN', lastPub:'2025-07-19', fy:'Mar-31'},
+  {name:'Avenue Supermarts Ltd',       isin:'INE192R01011', country:'IN', lastPub:'2025-07-19', fy:'Mar-31'},
+  {name:'Britannia Industries Ltd',    isin:'INE216A01030', country:'IN', lastPub:'2025-07-19', fy:'Mar-31'},
+  // Upcoming — expected Jul 21-24, 2026
+  {name:'Aditya Birla Capital Ltd',    isin:'INE674K01013', country:'IN', lastPub:'2025-07-21', fy:'Mar-31'},
+  {name:'Berger Paints India Ltd',     isin:'INE463A01038', country:'IN', lastPub:'2025-07-21', fy:'Mar-31'},
+  {name:'Grasim Industries Ltd',       isin:'INE047A01021', country:'IN', lastPub:'2025-07-21', fy:'Mar-31'},
+  {name:'Jet2 Plc',                    isin:'GB00B1722W11', country:'GB', lastPub:'2025-07-21', fy:'Mar-31'},
+  {name:'Ashtead Group Plc',           isin:'GB0000536739', country:'GB', lastPub:'2025-07-22', fy:'Apr-30'},
+  {name:'City Union Bank Ltd',         isin:'INE491A01021', country:'IN', lastPub:'2025-07-22', fy:'Mar-31'},
+  {name:'Metropolis Healthcare Ltd',   isin:'INE112L01020', country:'IN', lastPub:'2025-07-22', fy:'Mar-31'},
+  {name:'Vodacom Tanzania Ltd',        isin:'TZ1996102715', country:'TZ', lastPub:'2025-07-22', fy:'Mar-31'},
+  {name:'Bayer Cropscience Ltd /In/',  isin:'INE462A01022', country:'IN', lastPub:'2025-07-23', fy:'Mar-31'},
+  {name:'Watches Of Switzerland Group',isin:'GB00BJDQQ870', country:'GB', lastPub:'2025-07-23', fy:'Apr-27'},
+  {name:'RPM International Inc',       isin:'US7496851038', country:'US', lastPub:'2025-07-24', fy:'May-31'},
+  {name:'Zomato Ltd',                  isin:'INE758T01015', country:'IN', lastPub:'2025-07-24', fy:'Mar-31'},
+  {name:'KPIT Technologies Ltd',       isin:'INE04I401011', country:'IN', lastPub:'2025-07-24', fy:'Mar-31'},
+  {name:'Kainos Group Plc',            isin:'GB00BZ0D6727', country:'GB', lastPub:'2025-07-25', fy:'Mar-31'},
+  {name:'Bse Ltd',                     isin:'INE118H01025', country:'IN', lastPub:'2025-07-25', fy:'Mar-31'},
+];
+// Compute expected pub date (+1 year) and status for each entry
+(function() {
+  AR_WATCH_DATA.forEach(function(e) {
+    var p = e.lastPub.split('-'); // YYYY-MM-DD
+    e.expectedDate = (parseInt(p[0])+1)+'-'+p[1]+'-'+p[2];
+    var today = AR_WATCH_TODAY;
+    if (e.expectedDate < today)       e.status = 'overdue';
+    else if (e.expectedDate === today) e.status = 'today';
+    else                               e.status = 'upcoming';
+  });
+})();
+
+
+function arWatchToggle(btn) {
+  var wrap = btn.closest(".card").querySelector(".ar-watch-table-wrap");
+  var hidden = wrap.style.display === "none";
+  wrap.style.display = hidden ? "block" : "none";
+  btn.textContent = hidden ? "Hide table" : "Show table";
+}
+function buildARWatchCard() {
+  // Filter out companies already in GC for the relevant year (ISIN match in GOLDEN)
+  var gcISINs = new Set(GOLDEN.map(function(g) { return g.isin; }));
+  var pending = AR_WATCH_DATA.filter(function(e) {
+    return !gcISINs.has(e.isin);
+  });
+
+  var overdue  = pending.filter(function(e){ return e.status==='overdue'; });
+  var today    = pending.filter(function(e){ return e.status==='today'; });
+  var upcoming = pending.filter(function(e){ return e.status==='upcoming'; });
+
+  var total = overdue.length + today.length + today.length;
+  if (!pending.length) return '';
+
+  function row(e) {
+    var col = e.status==='overdue' ? 'var(--red)' : e.status==='today' ? 'var(--amber)' : 'var(--txt2)';
+    var bgCol = e.status==='overdue' ? 'var(--red-bg)' : e.status==='today' ? 'var(--amber-bg)' : 'var(--bg2)';
+    var label = e.status==='overdue' ? 'Overdue' : e.status==='today' ? 'Due Today' : 'Due '+e.expectedDate.slice(5);
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:5px 8px;font-size:12px;font-weight:500;color:var(--txt)">' +e.name+ '</td>'
+      +'<td style="padding:5px 8px;font-size:10.5px;color:var(--txt3);font-family:var(--mono)">' +e.isin+ '</td>'
+      +'<td style="padding:5px 8px;font-size:10.5px;color:var(--txt3)">' +e.country+ '</td>'
+      +'<td style="padding:5px 8px;font-size:10.5px;color:var(--txt3)">FY ' +e.fy+ '</td>'
+      +'<td style="padding:5px 8px;font-size:10.5px;font-family:var(--mono);color:var(--txt3)">' +e.lastPub+ '</td>'
+      +'<td style="padding:5px 8px;font-size:10.5px;font-family:var(--mono);font-weight:600;color:var(--txt2)">' +e.expectedDate+ '</td>'
+      +'<td style="padding:5px 8px">'
+        +'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:'+bgCol+';color:'+col+';white-space:nowrap">'+label+'</span>'
+      +'</td>'
+      +'</tr>';
+  }
+
+  var rows = '';
+  if (overdue.length)  rows += '<tr><td colspan="5" style="padding:4px 8px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--red);background:var(--red-bg)">⚠ OVERDUE — AR Expected But Not Yet Processed ('+overdue.length+')</td></tr>'+overdue.map(row).join('');
+  if (today.length)    rows += '<tr><td colspan="5" style="padding:4px 8px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--amber);background:var(--amber-bg)">📅 DUE TODAY — Expect AR to Arrive ('+today.length+')</td></tr>'+today.map(row).join('');
+  if (upcoming.length) rows += '<tr><td colspan="5" style="padding:4px 8px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt3)">UPCOMING THIS WEEK ('+upcoming.length+')</td></tr>'+upcoming.map(row).join('');
+
+  var urgentCount = overdue.length + today.length;
+  return '<div class="card" style="margin-bottom:14px;border-left:3px solid '+(urgentCount ? 'var(--red)' : 'var(--amber)')+'">'
+    +'<div class="card-hd" style="align-items:flex-start">'
+      +'<div>'
+        +'<div class="card-title" style="display:flex;align-items:center;gap:8px">'
+          +(urgentCount ? '<span style="font-size:14px">🔴</span>' : '<span style="font-size:14px">🟡</span>')
+          +"AR Publish Calendar — AR Watch List"
+          +(urgentCount ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd)">'+urgentCount+' require immediate attention</span>' : '')
+        +'</div>'
+        +"<div class=\"card-sub\">Based on last-year AR publish dates — companies with AR expected today or overdue, not yet in Golden Copy. SLA: published today → GC tomorrow</div>"
+      +'</div>'
+      +'<button class="btn btn-ghost btn-xs" onclick="arWatchToggle(this)">Hide table</button>'
+        +'Hide table'
+      +'</button>'
+    +'</div>'
+    +'<div class="ar-watch-table-wrap">'
+      +'<div style="overflow-x:auto">'
+        +'<table style="width:100%;border-collapse:collapse">'
+          +'<thead><tr style="border-bottom:1px solid var(--border)">'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3);text-align:left">Company</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3);text-align:left">ISIN</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3)">Country</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3)">FY End</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3)">Last Published (Prev. Year)</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3)">Expected This Year</th>'
+            +'<th style="padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt3)">Status</th>'
+          +'</tr></thead>'
+          +'<tbody>'+rows+'</tbody>'
+        +'</table>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+}
+
 function renderDashboard() {
   var isRM    = (currentRole === 'rm' || currentRole === 'admin');
+  var isAdmin = currentRole === 'admin';
   var fSector = window._dashFSector || '';
-  var roleTab = window._dashRoleTab || 'analyst';
+
+  // ── Universe stats ────────────────────────────────────────────────────
   var totalCos    = COMPANIES.length;
   var activeCos   = COMPANIES.filter(function(c){ return c.status === 'Active'; }).length;
   var inactiveCos = COMPANIES.filter(function(c){ return c.status === 'Inactive'; }).length;
   var gcPool      = fSector ? GOLDEN.filter(function(g){ return g.l0Name === fSector; }) : GOLDEN;
   var gcCos       = gcPool.length;
   var gcPct       = totalCos ? Math.round(gcCos / totalCos * 100) : 0;
+
+  // ── Workflow pipeline (status-based) ──────────────────────────────────
   var pendA       = WORKBENCH.filter(function(w){ return w.wfStatus === 'PENDING_ANALYST'; }).length;
-  var pendQC      = WORKBENCH.filter(function(w){ return w.wfStatus === 'PENDING_QC'; }).length;
-  var pendIC      = WORKBENCH.filter(function(w){ return w.wfStatus === 'PENDING_IC'; }).length;
-  var pendAll     = pendA + pendQC + pendIC;
-  var allSectors = []; var seenS = {};
-  GOLDEN.forEach(function(g){ if (!seenS[g.l0Name]) { seenS[g.l0Name] = 1; allSectors.push(g.l0Name); } });
-  allSectors.sort();
-  var yrData = YEARS.map(function(y) {
-    var inGC  = GOLDEN.filter(function(g){ return g.yearsGC.includes(y); }).length;
-    var inPen = WORKBENCH.filter(function(w){ return w.pendingYears && w.pendingYears.includes(y); }).length;
-    return { y: y, inGC: inGC, inPen: inPen, inInact: 0 };
+  var pendReview  = WORKBENCH.filter(function(w){ return w.wfStatus === 'PENDING_REVIEW'; }).length;
+  var pendAll     = pendA + pendReview;
+
+  // ── Workflow case breakdown ────────────────────────────────────────────
+  var caseCount = {1:0,'2a':0,'2b':0,3:0,'4a':0,'4b':0};
+  WORKBENCH.forEach(function(w) {
+    var yr = (w.pendingYears && w.pendingYears[0]) || (w.yearsGC && w.yearsGC[w.yearsGC.length-1]) || 2024;
+    var wc = determineWorkflowCase(w, yr);
+    if (caseCount[wc] !== undefined) caseCount[wc]++;
   });
+  var singleAnalyst = (caseCount[1]||0) + (caseCount[3]||0);
+  var fourEye       = (caseCount['2a']||0) + (caseCount['2b']||0) + (caseCount['4a']||0) + (caseCount['4b']||0);
+
+  // ── Per-analyst workload (for RM/Admin) ───────────────────────────────
+  var analystLoad = ROLE_USERS.analyst.map(function(u) {
+    var mine = WORKBENCH.filter(function(w){ return w.assignedTo === u.name; });
+    return {
+      initials: u.initials, name: u.name,
+      done:    mine.filter(function(w){ return w.wfStatus === 'COMPLETED'; }).length,
+      review:  mine.filter(function(w){ return w.wfStatus === 'PENDING_REVIEW'; }).length,
+      wip:     mine.filter(function(w){ return w.wfStatus === 'PENDING_ANALYST'; }).length,
+    };
+  });
+
+  // ── My own stats (Analyst view) ───────────────────────────────────────
+  var myItems    = WORKBENCH.filter(function(w){ return w.assignedTo === currentUser.name; });
+  var myPending  = myItems.filter(function(w){ return w.wfStatus === 'PENDING_ANALYST'; }).length;
+  var myReview   = WORKBENCH.filter(function(w){ return w.wfStatus === 'PENDING_REVIEW'; }).length; // any PENDING_REVIEW = could be mine
+  var myDone     = myItems.filter(function(w){ return w.wfStatus === 'COMPLETED'; }).length;
+  var myTotal    = myItems.length;
+  var myPct      = myTotal ? Math.round(myDone / myTotal * 100) : 0;
+
+  // ── Sector & year data ────────────────────────────────────────────────
+  var allSectors = []; var seenS = {};
+  GOLDEN.forEach(function(g){ if (!seenS[g.l0Name]) { seenS[g.l0Name]=1; allSectors.push(g.l0Name); } });
+  allSectors.sort();
   var l0Dist = {};
-  GOLDEN.forEach(function(g){ l0Dist[g.l0Name] = (l0Dist[g.l0Name] || 0) + 1; });
-  var l0Arr = Object.entries(l0Dist).sort(function(a,b){ return b[1]-a[1]; }).slice(0, 12);
-  // For non-RM/Admin: only show current user's own data
-  var roleMembers = [];
-  if (isRM) {
-    // RM/Admin: show full team
-    if (roleTab === 'analyst') {
-      roleMembers = ROLE_USERS.analyst.map(function(u) {
-        var items = WORKBENCH.filter(function(w){ return w.assignedTo === u.name; });
-        return { initials: u.initials, name: u.name,
-          done: items.filter(function(w){ return w.wfStatus === 'COMPLETED'; }).length,
-          wip:  items.filter(function(w){ return w.wfStatus !== 'COMPLETED'; }).length };
-      });
-    } else if (roleTab === 'qc') {
-      roleMembers = ROLE_USERS.qc.map(function(u) {
-        var items = WORKBENCH.filter(function(w){ return w.qcAssignedTo === u.name; });
-        return { initials: u.initials, name: u.name,
-          done: items.filter(function(w){ return w.wfStatus === 'COMPLETED'; }).length,
-          wip:  items.filter(function(w){ return w.wfStatus === 'PENDING_QC' || w.wfStatus === 'PENDING_IC'; }).length };
-      });
-    } else {
-      roleMembers = ROLE_USERS.qc.map(function(u) {
-        var items = WORKBENCH.filter(function(w){ return w.qcAssignedTo === u.name && w.wfStatus === 'PENDING_IC'; });
-        return { initials: u.initials, name: u.name, done: 0, wip: items.length };
-      });
-    }
-  } else {
-    // Analyst/QC/Committee: only show own stats
-    var _myItems = currentRole === 'analyst'
-      ? WORKBENCH.filter(function(w){ return w.assignedTo === currentUser.name; })
-      : currentRole === 'qc'
-        ? WORKBENCH.filter(function(w){ return w.qcAssignedTo === currentUser.name; })
-        : WORKBENCH.filter(function(w){ return w.qcAssignedTo === currentUser.name && w.wfStatus === 'PENDING_IC'; });
-    var _myU = ROLE_USERS.analyst.concat(ROLE_USERS.qc).find(function(u){ return u.name === currentUser.name; }) || { initials: currentUser.name.split(' ').map(function(p){return p[0];}).join('').slice(0,2).toUpperCase(), name: currentUser.name };
-    roleMembers = [{ initials: _myU.initials, name: _myU.name,
-      done: _myItems.filter(function(w){ return w.wfStatus === 'COMPLETED'; }).length,
-      wip:  _myItems.filter(function(w){ return w.wfStatus !== 'COMPLETED'; }).length }];
-  }
+  GOLDEN.forEach(function(g){ l0Dist[g.l0Name] = (l0Dist[g.l0Name]||0)+1; });
+  var l0Arr = Object.entries(l0Dist).sort(function(a,b){return b[1]-a[1];}).slice(0,12);
+  var yrData = YEARS.map(function(y) {
+    return {
+      y: y,
+      inGC:  GOLDEN.filter(function(g){ return g.yearsGC.includes(y); }).length,
+      inPen: WORKBENCH.filter(function(w){ return w.pendingYears && w.pendingYears.includes(y); }).length,
+      inInact: 0
+    };
+  });
+
   var PALETTE = ['#3b7eff','#0fb8a3','#f59e0b','#a78bfa','#ef4444','#22c55e','#f97316','#06b6d4','#84cc16','#ec4899','#6366f1','#14b8a6'];
-  function yGrid(PL, PT, cW, cH, max) {
-    var out = '';
-    for (var gi=0; gi<=4; gi++) {
-      var gy = PT + cH - Math.round(cH * gi / 4);
-      var gv = Math.round(max * gi / 4);
-      out += '<line x1="'+PL+'" y1="'+gy+'" x2="'+(PL+cW)+'" y2="'+gy+'" stroke="currentColor" stroke-opacity=".07" stroke-width="1"/>';
-      if (gi%2===0) out += '<text x="'+(PL-6)+'" y="'+(gy+4)+'" text-anchor="end" font-size="10" fill="currentColor" opacity=".35">'+gv+'</text>';
-    }
-    return out;
-  }
+
+  // ── Chart helpers ─────────────────────────────────────────────────────
+  function yGrid(PL,PT,cW,cH,max){var out='';for(var gi=0;gi<=4;gi++){var gy=PT+cH-Math.round(cH*gi/4),gv=Math.round(max*gi/4);out+='<line x1="'+PL+'" y1="'+gy+'" x2="'+(PL+cW)+'" y2="'+gy+'" stroke="currentColor" stroke-opacity=".07" stroke-width="1"/>';if(gi%2===0)out+='<text x="'+(PL-6)+'" y="'+(gy+4)+'" text-anchor="end" font-size="10" fill="currentColor" opacity=".35">'+gv+'</text>';}return out;}
   function svgVBar(data, h) {
-    // For many bars (sectors), rotate labels and increase bottom padding
-    var rotateLbls = data.length >= 8;
-    var VW=560, VH=h||220, PL=36, PR=10, PT=28, PB=rotateLbls?90:48;
-    var cW=VW-PL-PR, cH=VH-PT-PB, n=data.length;
+    var rotateLbls=data.length>=8,VW=560,VH=h||220,PL=36,PR=10,PT=28,PB=rotateLbls?90:48;
+    var cW=VW-PL-PR,cH=VH-PT-PB,n=data.length;
     var max=Math.max.apply(null,data.map(function(d){return d.value||0;}).concat([1]));
-    var barW=Math.max(12,Math.floor(cW/n*0.55)), barGap=cW/n;
+    var barW=Math.max(12,Math.floor(cW/n*0.55)),barGap=cW/n;
     var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+VW+' '+VH+'" preserveAspectRatio="none" style="display:block;width:100%;height:'+VH+'px">';
     svg+=yGrid(PL,PT,cW,cH,max);
-    for (var i=0;i<n;i++){
-      var d=data[i], bh=d.value>0?Math.max(3,Math.round(cH*d.value/max)):0;
-      var bx=PL+Math.round(i*barGap+(barGap-barW)/2), by=PT+cH-bh;
-      var col=d.color||PALETTE[i%PALETTE.length];
-      svg+='<rect x="'+bx+'" y="'+by+'" width="'+barW+'" height="'+bh+'" fill="'+col+'" rx="3" opacity=".88"/>';
-      if(d.value>0) svg+='<text x="'+(bx+barW/2)+'" y="'+(by-6)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+col+'">'+d.value+'</text>';
-      svg+='<rect x="'+bx+'" y="'+PT+'" width="'+barW+'" height="'+cH+'" fill="transparent"><title>'+(d.tooltip||d.label)+': '+d.value+'</title></rect>';
-      if (rotateLbls) {
-        var lx=bx+barW/2, ly=PT+cH+8;
-        svg+='<text transform="translate('+lx+','+ly+') rotate(-42)" text-anchor="end" font-size="9.5" fill="currentColor" opacity=".6">'+d.label+'</text>';
-      } else {
-        svg+='<text x="'+(bx+barW/2)+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45">'+d.label+'</text>';
-      }
-    }
+    for(var i=0;i<n;i++){var d=data[i],bh=d.value>0?Math.max(3,Math.round(cH*d.value/max)):0,bx=PL+Math.round(i*barGap+(barGap-barW)/2),by=PT+cH-bh,col=d.color||PALETTE[i%PALETTE.length];svg+='<rect x="'+bx+'" y="'+by+'" width="'+barW+'" height="'+bh+'" fill="'+col+'" rx="3" opacity=".88"/>';if(d.value>0)svg+='<text x="'+(bx+barW/2)+'" y="'+(by-6)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+col+'">'+d.value+'</text>';svg+='<rect x="'+bx+'" y="'+PT+'" width="'+barW+'" height="'+cH+'" fill="transparent"><title>'+(d.tooltip||d.label)+': '+d.value+'</title></rect>';if(rotateLbls){var lx=bx+barW/2,ly=PT+cH+8;svg+='<text transform="translate('+lx+','+ly+') rotate(-42)" text-anchor="end" font-size="9.5" fill="currentColor" opacity=".6">'+d.label+'</text>';}else{svg+='<text x="'+(bx+barW/2)+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45">'+d.label+'</text>';if(d.tooltip)svg+='<text x="'+(bx+barW/2)+'" y="'+(PT+cH+27)+'" text-anchor="middle" font-size="9" fill="currentColor" opacity=".35" style="cursor:help">\u24d8<title>'+d.tooltip+'</title></text>';}}
     return svg+'</svg>';
   }
   function svgGroupedBar(data, h) {
-    var VW=560, VH=h||220, PL=36, PR=10, PT=28, PB=48;
-    var cW=VW-PL-PR, cH=VH-PT-PB, n=data.length;
-    var max=Math.max.apply(null,data.map(function(d){return Math.max(d.done||0,d.wip||0);}).concat([1]));
-    var grpW=cW/n, bW=Math.max(8,Math.floor(grpW*0.32)), gap=Math.max(2,Math.floor(grpW*0.06));
-    var cDone='#22c55e', cWip='#3b7eff';
+    var VW=560,VH=h||220,PL=36,PR=10,PT=28,PB=48;
+    var cW=VW-PL-PR,cH=VH-PT-PB,n=data.length;
+    var max=Math.max.apply(null,data.map(function(d){return Math.max(d.done||0,d.wip||0,d.review||0);}).concat([1]));
+    var grpW=cW/n,bW=Math.max(8,Math.floor(grpW*0.25)),gap=Math.max(2,Math.floor(grpW*0.05));
+    var cDone='#22c55e',cWip='#3b7eff',cRev='#f59e0b';
     var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+VW+' '+VH+'" preserveAspectRatio="none" style="display:block;width:100%;height:'+VH+'px">';
     svg+=yGrid(PL,PT,cW,cH,max);
-    for (var i=0;i<n;i++){
-      var d=data[i], cx=PL+i*grpW+grpW/2, x1=cx-bW-gap/2, x2=cx+gap/2;
-      var bh1=d.done>0?Math.max(3,Math.round(cH*d.done/max)):0, by1=PT+cH-bh1;
-      svg+='<rect x="'+x1+'" y="'+by1+'" width="'+bW+'" height="'+bh1+'" fill="'+cDone+'" rx="3" opacity=".88"/>';
-      if(d.done>0) svg+='<text x="'+(x1+bW/2)+'" y="'+(by1-5)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+cDone+'">'+d.done+'</text>';
-      svg+='<rect x="'+x1+'" y="'+PT+'" width="'+bW+'" height="'+cH+'" fill="transparent"><title>'+d.name+' Completed: '+d.done+'</title></rect>';
-      var bh2=d.wip>0?Math.max(3,Math.round(cH*d.wip/max)):0, by2=PT+cH-bh2;
-      svg+='<rect x="'+x2+'" y="'+by2+'" width="'+bW+'" height="'+bh2+'" fill="'+cWip+'" rx="3" opacity=".88"/>';
-      if(d.wip>0) svg+='<text x="'+(x2+bW/2)+'" y="'+(by2-5)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+cWip+'">'+d.wip+'</text>';
-      svg+='<rect x="'+x2+'" y="'+PT+'" width="'+bW+'" height="'+cH+'" fill="transparent"><title>'+d.name+' In Progress: '+d.wip+'</title></rect>';
-      svg+='<text x="'+cx+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45" style="cursor:default"><title>'+d.name+'</title>'+d.initials+'</text>';
-    }
+    for(var i=0;i<n;i++){var d=data[i],cx=PL+i*grpW+grpW/2,tw=3*bW+2*gap,x0=cx-tw/2;
+      [[d.wip,cWip,'In Progress'],[d.review,cRev,'In 2nd Review'],[d.done,cDone,'Completed']].forEach(function(item,j){var v=item[0],col=item[1],lbl=item[2],bx=x0+j*(bW+gap),bh=v>0?Math.max(3,Math.round(cH*v/max)):0,by=PT+cH-bh;svg+='<rect x="'+bx+'" y="'+by+'" width="'+bW+'" height="'+bh+'" fill="'+col+'" rx="3" opacity=".88"/>';if(v>0)svg+='<text x="'+(bx+bW/2)+'" y="'+(by-5)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+col+'">'+v+'</text>';svg+='<rect x="'+bx+'" y="'+PT+'" width="'+bW+'" height="'+cH+'" fill="transparent"><title>'+d.name+' '+lbl+': '+v+'</title></rect>';});
+      svg+='<text x="'+cx+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45">'+d.initials+'</text>';}
     return svg+'</svg>';
   }
   function svgYearBar(data, h) {
-    var VW=760, VH=h||220, PL=36, PR=10, PT=28, PB=48;
-    var cW=VW-PL-PR, cH=VH-PT-PB, n=data.length;
+    var VW=760,VH=h||220,PL=36,PR=10,PT=28,PB=48;var cW=VW-PL-PR,cH=VH-PT-PB,n=data.length;
     var max=Math.max.apply(null,data.map(function(d){return Math.max(d.inGC,d.inPen,d.inInact);}).concat([1]));
-    var grpW=cW/n, bW=Math.max(6,Math.floor(grpW*0.22)), gap=Math.max(1,Math.floor(grpW*0.04));
-    var COLS=['#22c55e','#3b7eff','#f59e0b'];
+    var grpW=cW/n,bW=Math.max(6,Math.floor(grpW*0.22)),gap=Math.max(1,Math.floor(grpW*0.04)),COLS=['#22c55e','#3b7eff','#f59e0b'];
     var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+VW+' '+VH+'" preserveAspectRatio="none" style="display:block;width:100%;height:'+VH+'px">';
     svg+=yGrid(PL,PT,cW,cH,max);
-    for (var i=0;i<n;i++){
-      var d=data[i], cx=PL+i*grpW+grpW/2, tw=3*bW+2*gap, x0=cx-tw/2;
-      var vals=[d.inGC,d.inPen,d.inInact], lbls=['GC','Pending','Inactive'];
-      for (var j=0;j<3;j++){
-        var bx=x0+j*(bW+gap), val=vals[j], bh=val>0?Math.max(3,Math.round(cH*val/max)):0, by=PT+cH-bh;
-        svg+='<rect x="'+bx+'" y="'+by+'" width="'+bW+'" height="'+bh+'" fill="'+COLS[j]+'" rx="2" opacity=".88"/>';
-        if(val>0) svg+='<text x="'+(bx+bW/2)+'" y="'+(by-5)+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+COLS[j]+'">'+val+'</text>';
-        svg+='<rect x="'+bx+'" y="'+PT+'" width="'+bW+'" height="'+cH+'" fill="transparent"><title>'+d.y+' '+lbls[j]+': '+val+'</title></rect>';
-      }
-      svg+='<text x="'+cx+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45">'+d.y+'</text>';
-    }
+    for(var i=0;i<n;i++){var d=data[i],cx=PL+i*grpW+grpW/2,tw=3*bW+2*gap,x0=cx-tw/2;[d.inGC,d.inPen,d.inInact].forEach(function(val,j){var bx=x0+j*(bW+gap),bh=val>0?Math.max(3,Math.round(cH*val/max)):0,by=PT+cH-bh;svg+='<rect x="'+bx+'" y="'+by+'" width="'+bW+'" height="'+bh+'" fill="'+COLS[j]+'" rx="2" opacity=".88"/>';if(val>0)svg+='<text x="'+(bx+bW/2)+'" y="'+(by-5)+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+COLS[j]+'">'+val+'</text>';svg+='<rect x="'+bx+'" y="'+PT+'" width="'+bW+'" height="'+cH+'" fill="transparent"><title>'+d.y+' '+['GC','Pending','Inactive'][j]+': '+val+'</title></rect>';});
+      svg+='<text x="'+cx+'" y="'+(PT+cH+16)+'" text-anchor="middle" font-size="10" fill="currentColor" opacity=".45">'+d.y+'</text>';}
     return svg+'</svg>';
   }
-  function legend(items) {
-    return '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'
-      +items.map(function(it){return '<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt3)"><span style="width:10px;height:10px;border-radius:2px;background:'+it.color+';display:inline-block;flex-shrink:0"></span>'+it.label+'</span>';}).join('')+'</div>';
-  }
-  function chartCard(title, sub, chartHtml, legendItems, extra) {
-    return '<div class="card" style="display:flex;flex-direction:column">'
-      +'<div class="card-hd" style="flex-shrink:0"><div><div class="card-title">'+title+'</div><div class="card-sub">'+sub+'</div></div>'+(extra||'')+'</div>'
-      +'<div style="flex:1;min-height:0">'+chartHtml+'</div>'
-      +(legendItems?legend(legendItems):'')+'</div>';
-  }
+  function legend(items){return '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'+items.map(function(it){return '<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt3)"><span style="width:10px;height:10px;border-radius:2px;background:'+it.color+';display:inline-block;flex-shrink:0"></span>'+it.label+'</span>';}).join('')+'</div>';}
+  function chartCard(title, sub, chartHtml, legendItems, extra){return '<div class="card" style="display:flex;flex-direction:column"><div class="card-hd" style="flex-shrink:0"><div><div class="card-title">'+title+'</div><div class="card-sub">'+sub+'</div></div>'+(extra||'')+'</div><div style="flex:1;min-height:0">'+chartHtml+'</div>'+(legendItems?legend(legendItems):'')+'</div>';}
+
+  // ── Sector filter bar ─────────────────────────────────────────────────
   var sectorOpts='<option value="">All Sectors</option>';
   allSectors.forEach(function(s){sectorOpts+='<option value="'+s+'"'+(fSector===s?' selected':'')+'>'+s+'</option>';});
   var filterBar='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-lg)">'
     +'<span style="font-size:11px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px">Filter</span>'
     +'<select class="fs" style="width:auto;padding:5px 28px 5px 10px" onchange="window._dashFSector=this.value;renderDashboard()">'+sectorOpts+'</select>'
     +'<button class="btn btn-ghost btn-sm" onclick="window._dashFSector=\'\';renderDashboard()">Clear</button>'
-    +(isRM?'<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="dashDownload()">&#x2193; Export</button>':'')
+    +adminBtn('<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="dashDownload()">&#x2193; Export</button>')
     +'</div>';
-  var row1='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">'
-    +kpiCard('Universe',totalCos,'total securities','sc-blue')
-    +kpiCard('Golden Copy',gcCos,gcPct+'% of universe','sc-green')
-    +kpiCard('Pending',pendAll,'across all stages','sc-amber')
-    +kpiCard('Active',activeCos,'live securities','sc-teal')
-    +kpiCard('Inactive',inactiveCos,'delisted / CA deactivated','sc-red')
-    +'</div>';
-  var wfBarData=[{label:'Analyst',value:pendA,color:'#3b7eff'},{label:'QC',value:pendQC,color:'#a78bfa'},{label:'IC',value:pendIC,color:'#f59e0b'},{label:'Completed',value:gcCos,color:'#22c55e'}];
-  var sectorBarData=l0Arr.map(function(e,i){return {label:e[0],value:e[1],color:PALETTE[i%PALETTE.length]};});
-  var tabBtns=['analyst','qc','committee'].map(function(t){var lbl=t==='analyst'?'Analyst':t==='qc'?'QC':'IC';var active=roleTab===t;return '<button class="btn btn-sm '+(active?'btn-primary':'btn-ghost')+'"'+(active?'':' style="background:none;border:none"')+' onclick="window._dashRoleTab=\''+t+'\';renderDashboard()">'+lbl+'</button>';}).join('');
-  var c1=chartCard('Workflow Status','Pending tasks across all pipeline stages',svgVBar(wfBarData,200),[{label:'Pending Analyst',color:'#3b7eff'},{label:'Pending QC',color:'#a78bfa'},{label:'Pending IC',color:'#f59e0b'},{label:'Completed (GC)',color:'#22c55e'}]);
-  var c2=chartCard('Sector Distribution','Companies in Golden Copy by ITICS sector',svgVBar(sectorBarData,200),null);
+
+  // ── KPI row ───────────────────────────────────────────────────────────
+  // Analyst sees own stats; RM/Admin sees full pipeline
+  var row1;
+  if (!isRM) {
+    row1='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">'
+      +kpiCard('My Queue',myPending,'awaiting classification','sc-blue')
+      +kpiCard('In 2nd Review',myReview,'pending Analyst 2 sign-off','sc-amber')
+      +kpiCard('Completed',myDone,'pushed to Golden Copy','sc-green')
+      +kpiCard('My Total',myTotal,'all assigned companies','sc-teal')
+      +'</div>';
+  } else {
+    row1='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">'
+      +kpiCard('Universe',totalCos,'total securities','sc-blue')
+      +kpiCard('Golden Copy',gcCos,gcPct+'% of universe','sc-green')
+      +kpiCard('Analyst Queue',pendA,'pending Analyst 1 review','sc-amber')
+      +kpiCard('Pending Analyst 2',pendReview,'awaiting 2nd review before GC push','sc-teal')
+      +'</div>';
+  }
+
+  // ── Chart 1: Workflow pipeline status ─────────────────────────────────
+  var wfBarData=[
+    {label:'Analyst 1',   value:pendA,      color:'#3b7eff', tooltip:'Pending Analyst 1 review'},
+    {label:'Analyst 2',   value:pendReview,  color:'#f59e0b', tooltip:'Pending Analyst 2 review'},
+    {label:'In GC',       value:gcCos,       color:'#22c55e', tooltip:'In Golden Copy'},
+  ];
+  var c1=chartCard('Pipeline Status','Filings across the 3-stage workflow',svgVBar(wfBarData,200),[
+    {label:'Analyst 1 (1st review)',color:'#3b7eff'},
+    {label:'Analyst 2 (2nd review)',color:'#f59e0b'},
+    {label:'In GC',                 color:'#22c55e'}
+  ]);
+
+  // ── Chart 2: Workflow case breakdown ──────────────────────────────────
+  var CASE_DESC = {
+    'Case 1':  'AR auto-downloaded · AI extraction OK · AI mapping OK',
+    'Case 2a': 'AR auto-downloaded · AI extraction OK · analyst overrode mapping',
+    'Case 2b': 'AR auto-downloaded · AI extraction failed · analyst filled all manually',
+    'Case 3':  'AR manually uploaded · AI extraction OK · AI mapping OK',
+    'Case 4a': 'AR manually uploaded · AI extraction OK · analyst overrode mapping',
+    'Case 4b': 'AR manually uploaded · AI extraction failed · analyst filled all manually',
+  };
+  var caseBarData=[
+    {label:'Case 1',  value:caseCount[1]||0,    color:'#22c55e'},
+    {label:'Case 2a', value:caseCount['2a']||0,  color:'#f59e0b'},
+    {label:'Case 2b', value:caseCount['2b']||0,  color:'#f97316'},
+    {label:'Case 3',  value:caseCount[3]||0,     color:'#0fb8a3'},
+    {label:'Case 4a', value:caseCount['4a']||0,  color:'#a78bfa'},
+    {label:'Case 4b', value:caseCount['4b']||0,  color:'#ef4444'},
+  ].map(function(d){ d.tooltip = d.label+': '+CASE_DESC[d.label]; return d; });
+  var c2=chartCard('Workflow Cases',
+    singleAnalyst+' lower-complexity · '+fourEye+' higher-complexity (more manual work)',
+    svgVBar(caseBarData,200),
+    [{label:'Lower complexity — AI did extraction + mapping',color:'#22c55e'},{label:'Higher complexity — some/all manual work',color:'#f59e0b'}]
+  );
+
+  // ── Chart 3: Team workload or My stats ────────────────────────────────
   var c3;
   if (isRM) {
-    c3 = chartCard('Companies Assignment','Completed vs In Progress per team member',
-      svgGroupedBar(roleMembers,200),
-      [{label:'Completed',color:'#22c55e'},{label:'In Progress',color:'#3b7eff'}],
-      '<div style="display:flex;gap:2px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:3px;flex-shrink:0">'+tabBtns+'</div>');
+    c3=chartCard('Team Workload','In Progress / 2nd Review / Completed per analyst',
+      svgGroupedBar(analystLoad,200),
+      [{label:'In Progress',color:'#3b7eff'},{label:'2nd Review',color:'#f59e0b'},{label:'Completed',color:'#22c55e'}]
+    );
   } else {
-    var _me = roleMembers[0] || {name:currentUser.name,done:0,wip:0};
-    var _roleLabel = currentRole==='analyst'?'Analyst':currentRole==='qc'?'QC':'Committee';
-    var _total = _me.done + _me.wip;
-    var _pctDone = _total > 0 ? Math.round(_me.done/_total*100) : 0;
-    var _myCard = '<div class="card" style="display:flex;flex-direction:column;height:100%">'
-      +'<div class="card-hd"><div><div class="card-title">Companies Assignment</div>'
-      +'<div class="card-sub">Your classification queue</div></div>'
-      +'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)">'+_roleLabel+'</span>'
+    c3='<div class="card" style="display:flex;flex-direction:column;height:100%">'
+      +'<div class="card-hd"><div><div class="card-title">My Progress</div>'
+      +'<div class="card-sub">'+currentUser.name+' · '+ROLE_DEF.analyst.label+'</div></div>'
+      +'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)">Analyst</span>'
       +'</div>'
       +'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:20px;padding:20px 0">'
-      +'<div style="display:flex;align-items:center;justify-content:center;gap:28px">'
-      +'<div style="text-align:center">'
-      +'<div style="font-size:48px;font-weight:800;letter-spacing:-2px;color:var(--blue);line-height:1">'+_me.wip+'</div>'
-      +'<div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px">In Progress</div>'
+      +'<div style="display:flex;align-items:center;justify-content:center;gap:20px">'
+      +'<div style="text-align:center"><div style="font-size:44px;font-weight:800;color:var(--blue);line-height:1">'+myPending+'</div><div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px">Queue</div></div>'
+      +'<div style="width:1px;height:50px;background:var(--border)"></div>'
+      +'<div style="text-align:center"><div style="font-size:44px;font-weight:800;color:var(--amber);line-height:1">'+myReview+'</div><div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px">2nd Review</div></div>'
+      +'<div style="width:1px;height:50px;background:var(--border)"></div>'
+      +'<div style="text-align:center"><div style="font-size:44px;font-weight:800;color:#22c55e;line-height:1">'+myDone+'</div><div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px">Done</div></div>'
       +'</div>'
-      +'<div style="width:1px;height:60px;background:var(--border)"></div>'
-      +'<div style="text-align:center">'
-      +'<div style="font-size:48px;font-weight:800;letter-spacing:-2px;color:#22c55e;line-height:1">'+_me.done+'</div>'
-      +'<div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px">Completed</div>'
-      +'</div>'
-      +'</div>'
-      +(_total>0?'<div style="width:100%;max-width:240px">'
-      +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-bottom:5px">'
-      +'<span>Progress</span><span>'+_pctDone+'% complete</span></div>'
-      +'<div style="height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">'
-      +'<div style="width:'+_pctDone+'%;height:100%;background:#22c55e;border-radius:3px;transition:width .3s"></div></div>'
-      +'</div>':'<div style="font-size:12px;color:var(--txt3)">No tasks assigned yet</div>')
+      +(myTotal>0?'<div style="width:100%;max-width:240px">'
+        +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-bottom:5px"><span>Progress</span><span>'+myPct+'% complete</span></div>'
+        +'<div style="height:6px;background:var(--bg4);border-radius:3px;overflow:hidden"><div style="width:'+myPct+'%;height:100%;background:#22c55e;border-radius:3px;transition:width .3s"></div></div>'
+        +'</div>':'<div style="font-size:12px;color:var(--txt3)">No tasks assigned yet</div>')
       +'</div></div>';
-    c3 = _myCard;
   }
-  var c4=chartCard('Year-wise Coverage','GC, Pending, Inactive counts per fiscal year',svgYearBar(yrData,200),[{label:'In GC',color:'#22c55e'},{label:'Pending',color:'#3b7eff'},{label:'Inactive',color:'#f59e0b'}]);
+
+  // ── Chart 4: Year-wise GC coverage ────────────────────────────────────
+  var c4=chartCard('Year-wise Coverage','GC, Pending counts per fiscal year',
+    svgYearBar(yrData,200),
+    [{label:'In GC',color:'#22c55e'},{label:'Pending',color:'#3b7eff'}]
+  );
+
+  // ── Chart 5: Sector distribution (RM/Admin only) ──────────────────────
+  var sectorBarData=l0Arr.map(function(e,i){return {label:e[0],value:e[1],color:PALETTE[i%PALETTE.length]};});
+  var c5=chartCard('Sector Distribution','Companies in Golden Copy by ITICS sector',svgVBar(sectorBarData,200),null);
+
+  // ── Assemble ──────────────────────────────────────────────────────────
+  var grid = isRM
+    ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+c1+c3+c2+c4+'</div>'
+      +(isAdmin?'<div style="margin-top:12px">'+c5+'</div>':'')
+    : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+c1+c3+c2+c4+'</div>';
+
   document.getElementById('view').innerHTML=''
-    +'<div style="max-width:1400px">'+filterBar+row1
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+c1+c3+c4+c2+'</div>'
-    +'</div>';
+    +'<div style="max-width:1400px">'+buildARWatchCard()+filterBar+row1+grid+'</div>';
 }
+
 
 function kpiCard(label,val,note,cls){
   return '<div class="stat-card '+cls+'">'+'<div class="stat-lbl">'+label+'</div>'+'<div class="stat-num">'+val+'</div>'+'<div class="stat-note">'+note+'</div>'+'</div>';
@@ -2075,8 +2312,7 @@ function renderGolden() {
   <div class="pg-hd">
     <div><div class="pg-title">Golden Data</div><div class="pg-sub">${GOLDEN.length} companies · Verified, immutable classification</div></div>
     <div style="display:flex;gap:6px">
-      <button class="btn btn-ghost btn-sm" onclick="exportGolden('csv')">CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportGolden('xlsx')">XLSX</button>
+      ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportGolden('csv')">CSV</button><button class="btn btn-ghost btn-sm" onclick="exportGolden('xlsx')">XLSX</button>`)}
     </div>
   </div>
   <div class="tbl-wrap">
@@ -2214,7 +2450,7 @@ window.doInvalidate = function(gcId) {
   } else {
     WORKBENCH.push({
       id:'W'+uid(), coId:g.coId, coName:g.coName, isin:g.isin,
-      l0:g.l0, l0Name:g.l0Name, assignedTo:prevAnalyst, qcAssignedTo:getRRQC(),
+      l0:g.l0, l0Name:g.l0Name, assignedTo:prevAnalyst,
       type:'INVALIDATED', wfStatus:'PENDING_ANALYST', completionStatus:'wip',
       yearsGC:g.yearsGC.filter(y=>!yrs.includes(y)), pendingYears:yrs, invalidatedYears:yrs,
       priority:'high', llm:false, rejCount:0, rejComment:'', committeeNote:'',
@@ -2381,7 +2617,7 @@ function renderGCCompany(gcId) {
         ? '<div style="padding:20px;text-align:center;color:var(--txt3);font-size:12px">No audit events for this company yet.</div>'
         : coAudit.slice(0, 15).map(a => `
         <div class="audit-item">
-          <div class="audit-dot" style="background:${a.role==='analyst'?'var(--blue)':a.role==='qc'?'var(--purple)':a.role==='committee'?'var(--amber)':a.role==='rm'?'var(--green)':'var(--txt3)'}"></div>
+          <div class="audit-dot" style="background:${a.role==='analyst'?'var(--blue)':false?'var(--purple)':a.role==='committee'?'var(--amber)':a.role==='rm'?'var(--green)':'var(--txt3)'}"></div>
           <div class="audit-content">
             <div class="audit-action">${esc(a.user)} <span style="font-weight:400;color:var(--txt3)">— ${esc(a.action)}</span></div>
             <div class="audit-detail">${esc(a.detail)}</div>
@@ -2443,8 +2679,7 @@ function renderCompanies() {
   <div class="pg-hd">
     <div><div class="pg-title">Companies Master</div><div class="pg-sub">${COMPANIES.length} companies in universe · ${COMPANIES.filter(c=>c.status==='Active').length} active</div></div>
     <div style="display:flex;gap:6px">
-      <button class="btn btn-ghost btn-sm" onclick="exportCos('csv')">CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportCos('xlsx')">XLSX</button>
+      ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportCos('csv')">CSV</button><button class="btn btn-ghost btn-sm" onclick="exportCos('xlsx')">XLSX</button>`)}
       ${canEdit?`<button class="btn btn-ghost btn-sm" onclick="openBulkUpload()">Bulk Upload</button><button class="btn btn-primary btn-sm" onclick="openAddCompany()">Add Company</button>`:''}
     </div>
   </div>
@@ -2515,8 +2750,7 @@ function renderLevels() {
   <div class="pg-hd">
     <div><div class="pg-title">Taxonomy</div><div class="pg-sub">${`ITICS Taxonomy — ${TAX.L0.length} Sectors · ${TAX.L1.length} Themes · ${TAX.L2.length} Sub-Themes`}</div></div>
     <div style="display:flex;gap:6px">
-      <button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','csv')">CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','xlsx')">XLSX</button>
+      ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','csv')">CSV</button><button class="btn btn-ghost btn-sm" onclick="exportLevels('l2','xlsx')">XLSX</button>`)}
       ${canEdit?'<button class="btn btn-ghost btn-sm" onclick="openLevelBulkUpload()">Bulk Upload</button>':''}
     </div>
   </div>
@@ -2692,14 +2926,14 @@ function renderWorkbench() {
     return WORKBENCH.filter(w=>{
       // Role-based visibility: Analyst sees only own; QC sees only own; RM/Admin see all
       if (currentRole==='analyst'   && w.assignedTo!==currentUser.name) return false;
-      if (currentRole==='qc'        && w.qcAssignedTo!==currentUser.name) return false;
-      if (currentRole==='committee' && w.wfStatus!=='PENDING_IC')         return false;
+      
+      // committee role removed
       if (fStatus!=='all' && w.wfStatus!==fStatus) return false;
       if (fType  !=='all' && w.type   !==fType)    return false;
       if (fAna) {
         var _fnParts=fAna.split(':'),_fn=_fnParts[0],_fr=_fnParts[1];
         if (_fr==='analyst' && w.assignedTo!==_fn) return false;
-        if (_fr==='qc' && w.qcAssignedTo!==_fn) return false;
+        
       }
       if (q && !w.coName.toLowerCase().includes(q) && !w.isin.toLowerCase().includes(q)) return false;
       return true;
@@ -2723,9 +2957,8 @@ function renderWorkbench() {
       <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window.wbStatus(this.value)">
         <option value="all">All Statuses</option>
         <option value="PENDING_ANALYST">Pending Analyst</option>
-        <option value="PENDING_QC">Pending QC</option>
-        <option value="PENDING_IC">Pending IC</option>
-        <option value="COMPLETED">Completed</option>
+        <option value="PENDING_QC">Ready for GC</option>
+                <option value="COMPLETED">Completed</option>
       </select>
       <select class="fs" style="width:auto;padding:6px 28px 6px 10px" onchange="window.wbType(this.value)">
         <option value="all">All Types</option>
@@ -2751,9 +2984,9 @@ function renderWorkbench() {
         <th>Company Type</th>
         <th>Source</th>
         <th class="sortable" data-col="wfStatus"     onclick="window.wbSort('wfStatus')">Workflow Status <span class="sort-ico">⇅</span></th>
-        <th class="sortable" data-col="rejCount"     onclick="window.wbSort('rejCount')">Rejection Count <span class="sort-ico">⇅</span></th>
+        
         <th class="sortable" data-col="assignedTo"   onclick="window.wbSort('assignedTo')">Analyst ID <span class="sort-ico">⇅</span></th>
-        <th class="sortable" data-col="qcAssignedTo" onclick="window.wbSort('qcAssignedTo')">QC ID <span class="sort-ico">⇅</span></th>
+        
         <th></th>
       </tr></thead>
       <tbody id="wb-body"></tbody>
@@ -2762,28 +2995,28 @@ function renderWorkbench() {
   function draw() {
     let rows = sortRows(getRows(), sCol, sDir);
     const myP  = WORKBENCH.filter(w=>w.assignedTo===currentUser.name&&w.wfStatus==='PENDING_ANALYST').length;
-    const qcP  = WORKBENCH.filter(w=>w.wfStatus==='PENDING_QC').length;
+    const qcP = 0;
     const icP  = WORKBENCH.filter(w=>w.wfStatus==='PENDING_IC').length;
     // toggle buttons
         document.getElementById('wb-cnt').textContent = rows.length+' result'+(rows.length!==1?'s':'');
-    const wfLabel={'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC','COMPLETED':'Completed'};
-    const wfCls  ={'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee','COMPLETED':'bw-gc'};
+    const wfLabel={'PENDING_ANALYST':'Pending Analyst','PENDING_REVIEW':'Pending 2nd Review','PENDING_QC':'Ready for GC','PENDING_IC':'2nd Analyst Review','COMPLETED':'Completed'};
+    const wfCls  ={'PENDING_ANALYST':'bw-analyst','PENDING_REVIEW':'bw-qc','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee','COMPLETED':'bw-gc'};
     if (!window._wbSel) window._wbSel = {};
     const asgMode = window._wbAssignMode && canRM;
     const totalWbSel = asgMode ? Object.keys(window._wbSel).filter(k=>window._wbSel[k]).length : 0;
     document.getElementById('wb-body').innerHTML = rows.length===0
       ? `<tr><td colspan="${asgMode?12:11}"><div class="empty-state"><div class="empty-title">No items match</div><div class="empty-sub">Try adjusting filters</div></div></td></tr>`
       : rows.map(w=>{
-          const isMyItem  = currentRole==='analyst'   && w.assignedTo===currentUser.name && w.wfStatus==='PENDING_ANALYST';
-          const isQCItem  = currentRole==='qc'        && w.wfStatus==='PENDING_QC';
-          const isCmtItem = currentRole==='committee' && w.wfStatus==='PENDING_IC';
-          const actionBtn = isMyItem  ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Classify</button>`
-            : isQCItem  ? `<button class="btn btn-xs" style="background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd)" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Review</button>`
-            : isCmtItem ? `<button class="btn btn-warn btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Resolve</button>`
-            :              `<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">View</button>`;
-          const rejCell = w.rejCount>0
-            ? `<span class="mono" style="font-size:11.5px;font-weight:700;color:var(--red)">${w.rejCount}</span>`
-            : `<span style="color:var(--txt3);font-size:11.5px">—</span>`;
+          const isMyItem    = currentRole==='analyst'   && w.assignedTo===currentUser.name && w.wfStatus==='PENDING_ANALYST';
+          const isReviewItem= currentRole==='analyst'   && w.wfStatus==='PENDING_REVIEW';
+          const isQCItem = false;
+          const isCmtItem   = currentRole==='committee' && w.wfStatus==='PENDING_IC';
+          const actionBtn = isMyItem    ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Classify</button>`
+            : isReviewItem? `<button class="btn btn-xs" style="background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal-bd)" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">2nd Review</button>`
+            : isQCItem    ? `<button class="btn btn-xs" style="background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd)" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Review</button>`
+            : isCmtItem   ? `<button class="btn btn-warn btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">Resolve</button>`
+            :                `<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();nav('company-report',{wbId:'${w.id}'})">View</button>`;
+          const rejCell = '';
           const chkCell = asgMode ? `<td style="width:36px;text-align:center" onclick="event.stopPropagation()"><input type="checkbox" style="width:14px;height:14px;accent-color:var(--blue);cursor:pointer" ${window._wbSel[w.id]?'checked':''} onchange="wbChkRow('${w.id}',this.checked)"></td>` : '';
           const rowBg = asgMode && window._wbSel[w.id] ? 'background:var(--blue-bg)' : '';
           const _wco = COMPANIES.find(function(c){return c.id===w.coId;})||{};
@@ -2794,11 +3027,11 @@ function renderWorkbench() {
             <td class="mono" style="font-size:11.5px;white-space:nowrap">${esc(_wco.sedol||'—')}</td>
             <td style="font-size:12px;white-space:nowrap">${esc(_wco.country||'—')}</td>
             <td>${typeBadge(w.type)}</td>
-            <td>${w.llm?`<span class="llm-chip">Automation</span>`:`<span style="font-size:10.5px;color:var(--txt3);font-family:var(--mono)">Manual</span>`}</td>
+            <td>${w.llm?`<span class="llm-chip">Automation</span>`:`<span style="font-size:10.5px;color:var(--txt3);font-family:var(--mono)">Manual</span>`}&nbsp;${caseBadgeHTML(determineWorkflowCase(w, (w.pendingYears&&w.pendingYears[0])||(w.yearsGC&&w.yearsGC[w.yearsGC.length-1])||2024))}</td>
             <td><span class="badge ${wfCls[w.wfStatus]||'bc-unassigned'}">${wfLabel[w.wfStatus]||w.wfStatus}</span></td>
             <td>${rejCell}</td>
             <td style="font-size:12px;color:var(--txt2)">${esc(w.assignedTo||'—')}</td>
-            <td style="font-size:12px;color:var(--txt2)">${esc(w.qcAssignedTo||'—')}</td>
+            
             <td style="display:flex;gap:4px;align-items:center">
               ${actionBtn}
               ${canRM&&!asgMode?'<button class="btn btn-ghost btn-xs" style="padding:2px 7px" onclick="event.stopPropagation();openReassignModal(\''+w.id+'\')" title="Reassign">&#x21C4;</button>':''}
@@ -2851,6 +3084,51 @@ function isAIYear(w, year) {
   const y = (w.llmYears||{})[year];
   return y !== undefined ? y : !!w.llm;
 }
+// ── Workflow case helpers ────────────────────────────────────────────────────
+// Was the AR obtained automatically (Download/Agent service) for this fiscal year?
+// If the analyst uploaded a replacement via the mid-flow AR upload, it counts as manual.
+function arWasAutoDownloaded(w, year) {
+  if (w.arWorkflow && w.arWorkflow[year]) return false;
+  return !!w.llm;
+}
+// Did the analyst change ANY AI-suggested sub-theme for this year?
+function mappingWasManual(w, year) {
+  const g = (w.subThemeGate||{})[year] || {};
+  return Object.values(g).some(function(s){ return s.changed === true; });
+}
+// Returns the workflow case string: '1' | '2a' | '2b' | '3' | '4a' | '4b'
+// Case 1: AR auto, extraction AI, mapping AI → fully automated
+// Case 2a: AR auto, extraction AI, mapping manual
+// Case 2b: AR auto, extraction manual (failed), fully manual
+// Case 3: AR manual, extraction AI, mapping AI
+// Case 4a: AR manual, extraction AI, mapping manual
+// Case 4b: AR manual, extraction manual (failed), fully manual
+function determineWorkflowCase(w, year) {
+  const arAuto       = arWasAutoDownloaded(w, year);
+  const extractionAI = isAIYear(w, year);
+  if (!extractionAI) return arAuto ? '2b' : '4b';
+  const mapManual = mappingWasManual(w, year);
+  if (mapManual)  return arAuto ? '2a' : '4a';
+  return arAuto ? '1' : '3';
+}
+// Cases 2a/2b/4a/4b require a 4-eye check (Analyst 2 reviews Analyst 1's work).
+// Cases 1 and 3 are fully AI-driven → single analyst review, no 4-eye.
+function requires4Eye(w, year) {
+  return ['2a','2b','4a','4b'].indexOf(determineWorkflowCase(w, year)) !== -1;
+}
+// Badge HTML for the workflow case chip shown in the company report toolbar and WB list.
+function caseBadgeHTML(wfCase) {
+  const meta = {
+    '1':  { bg:'var(--green-bg)',  bd:'var(--green-bd)',  fg:'var(--green)',  label:'Case 1'  },
+    '2a': { bg:'var(--amber-bg)',  bd:'var(--amber-bd)',  fg:'var(--amber)',  label:'Case 2a' },
+    '2b': { bg:'var(--red-bg)',    bd:'var(--red-bd)',    fg:'var(--red)',    label:'Case 2b' },
+    '3':  { bg:'var(--green-bg)',  bd:'var(--green-bd)',  fg:'var(--green)',  label:'Case 3'  },
+    '4a': { bg:'var(--amber-bg)',  bd:'var(--amber-bd)',  fg:'var(--amber)',  label:'Case 4a' },
+    '4b': { bg:'var(--red-bg)',    bd:'var(--red-bd)',    fg:'var(--red)',    label:'Case 4b' },
+  };
+  const m = meta[wfCase] || meta['1'];
+  return `<span style="font-size:10px;font-weight:700;font-family:var(--mono);padding:1px 6px;border-radius:3px;background:${m.bg};border:1px solid ${m.bd};color:${m.fg}">${m.label}</span>`;
+}
 
 
 function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
@@ -2858,9 +3136,7 @@ function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
 
   // ANALYST: can classify, save draft, add segments, submit
   if (isEditable) {
-    const rejNote = w.rejCount > 0
-      ? `<span style="font-size:11px;color:var(--red);font-weight:600;padding:3px 8px;border-radius:4px;background:var(--red-bg);border:1px solid var(--red-bd)">${w.rejCount > 1 ? w.rejCount + 'x ' : ''}Rejected — address QC feedback</span>`
-      : '';
+
     const invNote = w.type === 'INVALIDATED'
       ? (() => {
           const invYrs2 = w.invalidatedYears || [];
@@ -2869,30 +3145,26 @@ function buildRoleActionBar(w, isEditable, activeFormTab, activeYear) {
         })()
       : '';
 
-    // Gate Submit for QC on the two AI review gates (Classification data + Sub-Theme), if this row is Automation-processed
+    // Gate Submit on the two AI review gates (Classification data + Sub-Theme), if Automation-processed
     const isAIRow = isAIYear(w, activeYear);
     const aiResolved = !isAIRow || isYearFullyResolved(w, activeYear);
+    const wfCase = determineWorkflowCase(w, activeYear);
+    const need4eye = requires4Eye(w, activeYear);
+    const submitLabel = w.wfStatus==='PENDING_REVIEW' ? 'Submit → GC' : 'Submit →';
 
     return `
       <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">Cancel</button>
       <button class="btn btn-ghost btn-sm" onclick="saveDraft('${w.id}')">Save Draft</button>
       ${activeFormTab === 'revenue' ? `<button class="btn btn-teal btn-sm" onclick="addRevRow()">+ Segment</button><button class="btn btn-ghost btn-sm" onclick="saveSegmentEdits()" title="Persist any new or corrected segment rows">💾 Save Segments</button>` : ''}
       <div style="flex:1"></div>
-      ${invNote}${rejNote}
-      <button class="btn btn-primary btn-sm" ${aiResolved?'':'disabled title="Confirm the Classification data and Sub-Theme review below first"'} onclick="submitForQC('${w.id}')">Submit for QC →</button>`;
+      ${invNote}
+      ${caseBadgeHTML(wfCase)}
+      <button class="btn btn-primary btn-sm" ${aiResolved?'':'disabled title="Confirm the Classification data and Sub-Theme review below first"'} onclick="submitForQC('${w.id}')">${submitLabel}</button>`;
   }
 
-  // QC: inline accept / reject using comment box already in form
-  if (role === 'qc' && w.wfStatus === 'PENDING_QC') {
-    const rejNote2 = w.rejComment ? `<span style="font-size:11px;color:var(--amber);padding:2px 7px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-bd);white-space:nowrap">${w.rejCount}× rejected previously</span>` : '';
-    return `
-      <button class="btn btn-ghost btn-sm" onclick="nav('workbench')">← Back</button>
-      <div style="flex:1"></div>
-      ${rejNote2}
-      <span style="font-size:11.5px;color:var(--txt3);white-space:nowrap">QC Decision:</span>
-      <button class="btn btn-danger btn-sm" onclick="submitQCInline('${w.id}','reject')">Reject</button>
-      <button class="btn btn-success btn-sm" onclick="submitQCInline('${w.id}','accept')">Accept → GC</button>`;
-  }
+  // PENDING_REVIEW is now handled by the isEditable branch above
+
+  // QC role removed — 4-eye check via PENDING_REVIEW handles this
 
   // COMMITTEE: resolve only (no accept/reject)
   if (role === 'committee' && w.wfStatus === 'PENDING_IC') {
@@ -2923,7 +3195,7 @@ window.openQCModal = function(wbId, defaultAction) {
     <button class="m-close" onclick="closeModal()">✕</button>
   </div>
   <div class="m-body">
-    ${w.rejComment?`<div class="rej-box" style="margin-bottom:14px"><div class="rej-hdr">Prior rejection comment (${w.rejCount}×)</div><div style="font-size:12.5px">${esc(w.rejComment)}</div></div>`:''}
+
     <div class="fg">
       <label class="fl">Decision <span class="req">*</span></label>
       <div style="display:flex;gap:8px">
@@ -2938,7 +3210,7 @@ window.openQCModal = function(wbId, defaultAction) {
           <input type="radio" name="qc-dec" value="reject" style="accent-color:var(--red)">
           <div>
             <div style="font-weight:600;color:var(--red);font-size:12.5px">Reject</div>
-            <div style="font-size:11px;color:var(--txt3)">${w.rejCount>=1?'2nd rejection → escalate to Committee':'Return to analyst'}</div>
+            <div style="font-size:11px;color:var(--txt3)">Return to analyst for correction</div>
           </div>
         </label>
       </div>
@@ -2965,7 +3237,7 @@ window.openCommitteeModal = function(wbId) {
     <button class="m-close" onclick="closeModal()">✕</button>
   </div>
   <div class="m-body">
-    ${w.rejComment?`<div class="rej-box"><div class="rej-hdr">QC Rejection Comment (${w.rejCount}x)</div><div style="font-size:12.5px">${esc(w.rejComment)}</div></div>`:''}
+
     <div class="fg">
       <label class="fl">Resolution & Guidance <span class="req">*</span></label>
       <textarea class="ft" id="comm-note" style="min-height:100px" placeholder="Provide expert guidance for the analyst to resolve the disputed classification…"></textarea>
@@ -3054,7 +3326,7 @@ window.doAddCo = function() {
   const qcUser = getRRQC();
   WORKBENCH.push({
     id:'W'+uid(), coId:newCo.id, coName:newCo.name, isin:newCo.isin,
-    l0:'', l0Name:'Unclassified', assignedTo:analyst, qcAssignedTo:qcUser,
+    l0:'', l0Name:'Unclassified', assignedTo:analyst,
     type:'FRESH', wfStatus:'PENDING_ANALYST', completionStatus:'wip',
     yearsGC:[], pendingYears:[...YEARS], priority:'medium',
     llm:false, rejCount:0, rejComment:'', committeeNote:'',
@@ -3165,7 +3437,7 @@ window.openBulkUpload = function() {
     +'</div>'
     +'<div style="display:flex;flex-direction:column;gap:12px">'
     +'<div style="display:flex;align-items:center;gap:10px">'
-    +'<button class="btn btn-ghost btn-sm" onclick="downloadCoTemplate()">&#x2193; Download Template</button>'
+    +adminBtn('<button class="btn btn-ghost btn-sm" onclick="downloadCoTemplate()">&#x2193; Download Template</button>')
     +'<span style="font-size:11.5px;color:var(--txt3)">XLSX with required columns</span>'
     +'</div>'
     +'<div class="fg"><label class="fl">Upload filled template</label>'
@@ -3216,10 +3488,10 @@ window.handleBulkCo = function() {
         COMPANIES.push(newCo);
         var analyst=getRRAnalyst(), qcUser=getRRQC();
         WORKBENCH.push({id:'W'+uid(),coId:newCo.id,coName:newCo.name,isin:newCo.isin,
-          l0:'',l0Name:'Unclassified',assignedTo:analyst,qcAssignedTo:qcUser,
+          l0:'',l0Name:'Unclassified',assignedTo:analyst,
           type:'FRESH',wfStatus:'PENDING_ANALYST',completionStatus:'wip',
           yearsGC:[],pendingYears:[...YEARS],priority:'medium',
-          llm:false,rejCount:0,rejComment:'',committeeNote:'',
+          llm:false,
           submittedDate:null,createdDate:newCo.addedDate});
         added++;
       });
@@ -3350,7 +3622,7 @@ function renderCompanyReport(wbId) {
   let arPage = 1;
   const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
   // Core edit permission: analyst must be assigned and status pending_analyst
-  const canEdit = currentRole === 'analyst' && w.wfStatus === 'PENDING_ANALYST' && w.assignedTo === currentUser.name;
+  const canEdit = currentRole === 'analyst' && (w.wfStatus === 'PENDING_ANALYST' && w.assignedTo === currentUser.name || w.wfStatus === 'PENDING_REVIEW');
 
   // For invalidated_gc items: only invalidatedYears are mutable; rest are GC-locked read-only
   // For all other types (fresh, ar_update): all pendingYears are editable
@@ -3432,11 +3704,16 @@ function renderCompanyReport(wbId) {
   function buildForm() {
     const d = getSegData();
 
+    // Hoisted here so both Metadata and Revenue Segmentation tabs can reference them
+    const _isAIYr    = isAIYear(w, activeYear);
+    const clsStatus  = _isAIYr ? getClsGateStatus(w, activeYear) : null;
+    const clsGateRec = (w.clsGate||{})[activeYear] || {};
+
     // Rejection / Committee notices
     const llmBanner = '';
     const notices = [
       llmBanner,
-      (w.rejCount>0&&w.rejComment) ? `<div class="rej-box" style="margin-bottom:10px"><div class="rej-hdr">QC Rejection (${w.rejCount}×)</div><div style="font-size:12.5px">${esc(w.rejComment||'—')}</div></div>` : '',
+      '',
       w.committeeNote ? `<div class="comm-box" style="margin-bottom:10px"><div class="comm-hdr">Committee Resolution</div><div style="font-size:12.5px">${esc(w.committeeNote)}</div></div>` : '',
     ].join('');
 
@@ -3477,7 +3754,32 @@ function renderCompanyReport(wbId) {
     const _ro=!isYearEditable(activeYear);
     const _arWf = (w.arWorkflow||{})[activeYear];
     let metaBanner = '';
-    if (isEditable && _arWf) {
+    // Gate 1 on Metadata tab — extraction covers both metadata fields AND AR classification data.
+    // Same clsGate as Revenue Segmentation; accepting here unlocks sub-theme review on both tabs.
+    if (isEditable && _isAIYr) {
+      if (clsStatus === 'pending') {
+        metaBanner = `<div class="ai-info-box">
+          <div class="ai-info-hdr">Extraction Review Needed</div>
+          <div style="font-size:12.5px;margin-bottom:8px">AI extracted the metadata below and the AR Classification data on the Revenue Segmentation tab from the same Annual Report run. Verify the Business Description, contacts and other fields here, then Accept or Reject.</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-danger btn-xs" onclick="metaGateOpenReject()">✕ Reject</button>
+            <button class="btn btn-success btn-xs" onclick="clsGateAccept()">✓ Accept</button>
+          </div>
+        </div>`;
+      } else if (clsStatus === 'rejected') {
+        metaBanner = `<div class="rej-box">
+          <div class="rej-hdr">Extraction Rejected</div>
+          ${(clsGateRec.issueLabels||[clsGateRec.issueLabel]).filter(Boolean).length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px">${(clsGateRec.issueLabels||[clsGateRec.issueLabel]).filter(Boolean).map(l=>`<span class="badge" style="background:var(--red-bg);color:var(--red);border-color:var(--red-bd)">${esc(l)}</span>`).join('')}</div>` : ''}
+          <div style="font-size:12.5px">${esc(clsGateRec.reason||'—')}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-top:6px">Correct the metadata fields below as needed. Fix the AR Classification data under Revenue Segmentation, then re-trigger the services.</div>
+        </div>`;
+      } else if (clsStatus === 'accepted') {
+        metaBanner = `<div class="ai-ok-box">
+          <div class="ai-ok-hdr">Extraction Accepted</div>
+          <div style="font-size:12.5px">Metadata and AR Classification data confirmed. Review Sub-Themes under Revenue Segmentation.</div>
+        </div>`;
+      }
+    } else if (isEditable && _arWf) {
       if (_arWf.choice === 'manual') {
         metaBanner = `<div class="ai-info-box">
           <div class="ai-info-hdr">Manual Review Needed</div>
@@ -3543,11 +3845,8 @@ function renderCompanyReport(wbId) {
     const _initIncomplete = d.segments.filter(function(s){ return !(s.rev>0); }).length;
 
     // Gate 1 — Classification data (AR Classification / Revenue / Revenue % / Revenue Class), whole table
-    const _isAIYr = isAIYear(w, activeYear);
-    const clsStatus = _isAIYr ? getClsGateStatus(w, activeYear) : null;
-    const clsGateRec = (w.clsGate||{})[activeYear] || {};
-    const clsLocked = _isAIYr && clsStatus !== 'accepted';        // Sub-Theme review locked until accepted
-    const clsRowsEditable = _isAIYr && clsStatus === 'rejected';   // AR Classification/Revenue/Revenue%/Class editable
+    const clsLocked        = _isAIYr && clsStatus !== 'accepted';
+    const clsRowsEditable  = _isAIYr && clsStatus === 'rejected';
     const finalSectorReady = !_isAIYr || isYearFullyResolved(w, activeYear);
 
     let clsBanner = '';
@@ -3565,7 +3864,7 @@ function renderCompanyReport(wbId) {
       } else if (clsStatus === 'rejected') {
         clsBanner = `<div class="rej-box" id="cls-gate-banner">
           <div class="rej-hdr">Correction Needed</div>
-          ${clsGateRec.issueLabel ? `<div style="margin-bottom:6px"><span class="badge" style="background:var(--red-bg);color:var(--red);border-color:var(--red-bd)">${esc(clsGateRec.issueLabel)}</span></div>` : ''}
+          ${(clsGateRec.issueLabels||[clsGateRec.issueLabel]).filter(Boolean).length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px">${(clsGateRec.issueLabels||[clsGateRec.issueLabel]).filter(Boolean).map(l=>`<span class="badge" style="background:var(--red-bg);color:var(--red);border-color:var(--red-bd)">${esc(l)}</span>`).join('')}</div>` : ''}
           <div style="font-size:12.5px;margin-bottom:8px">${esc(clsGateRec.reason||'—')}</div>
           ${clsGateRec.pageRef ? `<div style="font-size:11.5px;margin-bottom:8px"><span style="color:var(--txt3)">Correct data is on page(s):</span> <span class="page-ref">p.${esc(clsGateRec.pageRef)}</span></div>` : ''}
           <div style="font-size:11px;color:var(--txt3);margin-bottom:8px">Edit the AR Classification, Revenue, Revenue % and Revenue Class values directly in the table below to match the page(s) above, then re-trigger the services.</div>
@@ -3619,11 +3918,13 @@ function renderCompanyReport(wbId) {
             const themeCell = rowGated || !finalized
               ? `<span style="color:var(--txt3);font-size:11px">–</span>`
               : `<span style="font-size:12px;color:var(--txt2)">${esc(s.l1n)}</span>`;
+            const _topConf = (s.llm && !finalized) ? getSuggestedSubThemes(s)[0]?.conf : null;
+            const _confChip = _topConf ? `<span style="font-size:9.5px;font-family:var(--mono);font-weight:700;padding:1px 5px;border-radius:3px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);margin-left:5px" title="AI confidence score">${_topConf}%</span>` : '';
             const subThemeCell = rowGated
-              ? `<div style="font-size:12px;font-weight:600">${esc(s.l2n)} <span style="color:var(--txt3);font-size:11px;cursor:not-allowed;margin-left:4px;opacity:.6" title="Confirm the Classification data above first">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`
+              ? `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--txt3);font-size:11px;cursor:not-allowed;margin-left:4px;opacity:.6" title="Confirm the Classification data above first">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`
               : finalized
                 ? `<div style="font-size:12px">${esc(s.l2n)}</div><div class="mono" style="font-size:10px;color:var(--txt3)">${s.l2}</div>`
-                : `<div style="font-size:12px;font-weight:600">${esc(s.l2n)} <span style="color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:4px" onclick="subThemeOpenSet(${i})">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`;
+                : `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:4px" onclick="subThemeOpenSet(${i})">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`;
             return `
           <tr id="revrow-${i}">
             <td style="font-weight:600;font-size:12px;min-width:130px">${labelCell}</td>
@@ -3650,7 +3951,7 @@ function renderCompanyReport(wbId) {
       ${coAudit.length===0 ? '<div style="padding:20px;text-align:center;color:var(--txt3);font-size:12px">No audit events for this company yet.</div>' :
         coAudit.slice(0,10).map(a=>`
         <div class="audit-item">
-          <div class="audit-dot" style="background:${a.role==='analyst'?'var(--blue)':a.role==='qc'?'var(--purple)':a.role==='committee'?'var(--amber)':a.role==='rm'?'var(--green)':'var(--txt3)'}"></div>
+          <div class="audit-dot" style="background:${a.role==='analyst'?'var(--blue)':false?'var(--purple)':a.role==='committee'?'var(--amber)':a.role==='rm'?'var(--green)':'var(--txt3)'}"></div>
           <div class="audit-content">
             <div class="audit-action">${esc(a.user)} <span style="font-weight:400;color:var(--txt3)">— ${esc(a.action)}</span></div>
             <div class="audit-detail">${esc(a.detail)}</div>
@@ -3672,7 +3973,7 @@ function renderCompanyReport(wbId) {
     const commentBox = needsComment ? `
     <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg1)">
       <label style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--txt3);display:block;margin-bottom:5px">${commentLabel}</label>
-      <textarea id="${commentId}" class="ft" rows="2" style="min-height:52px;resize:vertical;font-size:12.5px" placeholder="${currentRole==='analyst'?'Add a note for QC reviewer…':currentRole==='qc'?'Mandatory — provide review comments for accept or reject decision…':'Provide resolution guidance for the analyst…'}"></textarea>
+      <textarea id="${commentId}" class="ft" rows="2" style="min-height:52px;resize:vertical;font-size:12.5px" placeholder="${currentRole==='analyst'?'Add a note for the reviewer…':'Provide resolution guidance for the analyst…'}"></textarea>
     </div>` : '';
     return `
     ${commentBox}
@@ -3696,6 +3997,7 @@ function renderCompanyReport(wbId) {
             ${isAIYear(w, activeYear)
               ? `<span class="llm-chip" title="Automation-extracted classification — segment data and page references were extracted by AI. Verify against the Annual Report before submitting.">Automation</span>`
               : `<span style="font-size:10px;color:var(--txt3);font-family:var(--mono);padding:1px 5px;border:1px solid var(--border2);border-radius:3px">Manual</span>`}
+            ${caseBadgeHTML(determineWorkflowCase(w, activeYear))}
             <span class="mono" style="font-size:10.5px;color:var(--txt3)">FY${activeYear}</span>
           </div>
         </div>
@@ -3796,9 +4098,20 @@ function renderCompanyReport(wbId) {
     const top = TAX.L2.find(x=>x.c===seg.l2);
     if (!top) return [];
     const siblings = TAX.L2.filter(x=>x.l1===top.l1 && x.c!==top.c).slice(0,2);
-    const confidences = [91, 58, 34];
-    const list = [{c:top.c, n:top.n, conf:confidences[0]}];
-    siblings.forEach((sib,sidx)=> list.push({c:sib.c, n:sib.n, conf:confidences[sidx+1]||20}));
+    // Derive a deterministic but varied confidence from the sub-theme code so every
+    // segment looks realistic rather than all showing the same 91%.
+    // Primary pick: 74–96%, secondary: 30–60%, tertiary: 12–35%
+    function codeHash(str) {
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) & 0xffffffff;
+      return Math.abs(h);
+    }
+    const h = codeHash(top.c + (seg.label||''));
+    const topConf  = 74 + (h % 23);                        // 74–96
+    const sec1Conf = 28 + (codeHash(top.c+'s1') % 28);     // 28–55
+    const sec2Conf = 11 + (codeHash(top.c+'s2') % 19);     // 11–29
+    const list = [{c:top.c, n:top.n, conf:topConf}];
+    siblings.forEach((sib,sidx)=> list.push({c:sib.c, n:sib.n, conf:sidx===0?sec1Conf:sec2Conf}));
     return list;
   }
 
@@ -4001,6 +4314,64 @@ function renderCompanyReport(wbId) {
     toast(result.addedCount ? `Classification confirmed ✓ — ${result.addedCount} new segment saved. Review each Sub-Theme below.` : 'Classification confirmed ✓ — review each Sub-Theme below.', 'ok');
   };
 
+  // Metadata-specific reject modal — same gate (clsGate), different issue categories
+
+  // Renders a set of toggleable chip-buttons for multi-select issue categories.
+  // At least one must be selected before the confirm button enables.
+  function issueChipsHTML(labels) {
+    return `<div id="cls-reject-chips" style="display:flex;flex-wrap:wrap;gap:6px">` +
+      labels.map(l =>
+        `<button type="button" class="cls-issue-chip"
+          style="padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:var(--bg2);
+                 color:var(--txt2);font-size:11.5px;cursor:pointer;transition:all .12s;white-space:nowrap"
+          onclick="clsChipToggle(this)" data-label="${l.replace(/"/g,'&quot;')}">${l}</button>`
+      ).join('') + `</div>`;
+  }
+
+  window.clsChipToggle = function(el) {
+    const on = el.getAttribute('data-on') === '1';
+    el.setAttribute('data-on', on ? '' : '1');
+    el.style.background  = on ? 'var(--bg2)'   : 'var(--red-bg)';
+    el.style.color       = on ? 'var(--txt2)'  : 'var(--red)';
+    el.style.borderColor = on ? 'var(--border2)': 'var(--red-bd)';
+    el.style.fontWeight  = on ? '400' : '600';
+    clsGateValidateReject();
+  };
+
+  function getSelectedChips() {
+    return Array.from(document.querySelectorAll('.cls-issue-chip[data-on="1"]'))
+                .map(el => el.getAttribute('data-label'));
+  }
+
+  window.metaGateOpenReject = function() {
+    showModal(`
+    <div class="m-hd">
+      <div><div class="m-title">Reject Metadata — ${esc(w.coName)}</div><div class="m-sub">${esc(w.isin)} · FY${activeYear}</div></div>
+      <button class="m-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="fg">
+        <label class="fl">What's wrong? Select all that apply <span class="req">*</span></label>
+        ${issueChipsHTML(META_ISSUE_LABELS)}
+        <div style="font-size:10px;color:var(--txt3);margin-top:5px">Select one or more — multiple issues can be flagged together.</div>
+      </div>
+      <div class="fg">
+        <label class="fl">Describe the issue(s) <span class="req">*</span></label>
+        <textarea class="ft" id="cls-reject-reason" style="min-height:80px" placeholder="Explain what is incorrect and why — e.g. 'Business Description is from a different entity. FY End Date shows Dec-2024 but the AR cover page says Mar-2024.'" oninput="clsGateValidateReject()"></textarea>
+        <div id="cls-reject-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px">Select at least one category, then describe — min. 30 characters and 6 words.</div>
+      </div>
+      <div class="fg">
+        <label class="fl">Page Number(s) — where correct data appears <span class="req">*</span></label>
+        <input class="fi" id="cls-reject-pageref" placeholder="e.g. 1 or 1, 2" oninput="clsGateValidateReject()">
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-danger" id="cls-reject-confirm" disabled onclick="clsGateConfirmReject()">Confirm Rejection</button>
+    </div>`, 'm-md');
+  };
+
   window.clsGateOpenReject = function() {
     showModal(`
     <div class="m-hd">
@@ -4009,21 +4380,19 @@ function renderCompanyReport(wbId) {
     </div>
     <div class="m-body">
       <div class="fg">
-        <label class="fl">Issue Category <span class="req">*</span></label>
-        <select class="fs" id="cls-reject-label" style="width:100%" onchange="clsGateValidateReject()">
-          <option value="">— Select issue category —</option>
-          ${CLS_ISSUE_LABELS.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join('')}
-        </select>
+        <label class="fl">What's wrong? Select all that apply <span class="req">*</span></label>
+        ${issueChipsHTML(CLS_ISSUE_LABELS)}
+        <div style="font-size:10px;color:var(--txt3);margin-top:5px">Select one or more — multiple issues can be flagged together.</div>
       </div>
       <div class="fg">
-        <label class="fl">What's wrong with the AR Classification, Revenue, Revenue % or Revenue Class? <span class="req">*</span></label>
-        <textarea class="ft" id="cls-reject-reason" style="min-height:90px" placeholder="Explain exactly what is wrong and why — this is stored to analyze decision patterns and improve accuracy over time. E.g. 'Page 22 lists Data Center revenue as $47.5B but the table here shows $43.1B — footnote 4B figure was missed.'" oninput="clsGateValidateReject()"></textarea>
-        <div id="cls-reject-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px">Select an issue category, then describe it — minimum 30 characters and 6 words.</div>
+        <label class="fl">Describe the issue(s) <span class="req">*</span></label>
+        <textarea class="ft" id="cls-reject-reason" style="min-height:80px" placeholder="Explain exactly what is wrong and why — e.g. 'Page 22 lists Data Center revenue as $47.5B but the table shows $43.1B — footnote 4B was missed. Also segment label shows Cloud but AR says Cloud Services.'" oninput="clsGateValidateReject()"></textarea>
+        <div id="cls-reject-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px">Select at least one category, then describe — min. 30 characters and 6 words.</div>
       </div>
       <div class="fg">
-        <label class="fl">Page Number(s) — where the correct data appears in the Annual Report <span class="req">*</span></label>
+        <label class="fl">Page Number(s) — where the correct data appears <span class="req">*</span></label>
         <input class="fi" id="cls-reject-pageref" placeholder="e.g. 22 or 22, 23" oninput="clsGateValidateReject()">
-        <div style="font-size:10.5px;color:var(--txt3);margin-top:4px">This tells the services exactly where to re-read from — no need to upload anything separately.</div>
+        <div style="font-size:10.5px;color:var(--txt3);margin-top:4px">This tells the services exactly where to re-read from.</div>
       </div>
     </div>
     <div class="m-foot">
@@ -4034,48 +4403,48 @@ function renderCompanyReport(wbId) {
   };
 
   window.clsGateValidateReject = function() {
-    const labelEl = document.getElementById('cls-reject-label');
     const reasonEl = document.getElementById('cls-reject-reason');
     const pageRefEl = document.getElementById('cls-reject-pageref');
     const btn = document.getElementById('cls-reject-confirm');
     const help = document.getElementById('cls-reject-help');
-    if (!labelEl || !reasonEl || !pageRefEl || !btn || !help) return;
-    const labelChosen = !!labelEl.value;
-    const pageRefGiven = /\d/.test(pageRefEl.value||'');
+    if (!reasonEl || !btn || !help) return;
+    const selected = getSelectedChips();
+    const pageRefGiven = /\d/.test(pageRefEl?.value||'');
     const v = validateReasonText(reasonEl.value);
-    btn.disabled = !(labelChosen && v.valid && pageRefGiven);
-    if (!labelChosen) {
-      help.textContent = 'Select an issue category, then describe it below (min. 30 characters, 6 words).';
+    btn.disabled = !(selected.length > 0 && v.valid && pageRefGiven);
+    if (!selected.length) {
+      help.textContent = 'Select at least one issue category above, then describe it (min. 30 characters, 6 words).';
       help.style.color = 'var(--txt3)';
     } else if (!v.valid) {
       help.textContent = v.message;
       help.style.color = 'var(--amber)';
     } else if (!pageRefGiven) {
-      help.textContent = 'Enter the page number(s) where the correct data appears in the Annual Report.';
+      help.textContent = 'Enter the page number(s) where the correct data appears.';
       help.style.color = 'var(--amber)';
     } else {
-      help.textContent = 'Looks good ✓ — this will be saved for the decision/audit log.';
+      help.textContent = `Looks good ✓ — ${selected.length} issue${selected.length>1?' categories':'category'} flagged. Will be saved to the decision log.`;
       help.style.color = 'var(--green)';
     }
   };
 
   window.clsGateConfirmReject = function() {
-    const issueLabel = document.getElementById('cls-reject-label')?.value;
+    const issueLabels = getSelectedChips();  // array — multiple issues allowed
     const reason = document.getElementById('cls-reject-reason')?.value.trim();
     const pageRef = document.getElementById('cls-reject-pageref')?.value.trim();
-    if (!issueLabel || !reason || !pageRef) return;
+    if (!issueLabels.length || !reason || !pageRef) return;
+    const issueLabel = issueLabels.join(', ');  // human-readable summary kept for display
     const d = getSegData();
     w.clsGate = w.clsGate || {};
-    w.clsGate[activeYear] = { status:'rejected', issueLabel, reason, pageRef, ts:new Date().toISOString(), by:currentUser.name };
+    w.clsGate[activeYear] = { status:'rejected', issueLabels, issueLabel, reason, pageRef, ts:new Date().toISOString(), by:currentUser.name };
     DECISIONLOG.unshift({
       id:'DL'+uid(), wbId:w.id, coId:w.coId, coName:w.coName, isin:w.isin, year:activeYear,
-      analyst:currentUser.name, decision:'rejected', issueType:'classification', issueLabel, reason, pageRef,
+      analyst:currentUser.name, decision:'rejected', issueType:'classification', issueLabels, issueLabel, reason, pageRef,
       segmentsAtDecision: JSON.parse(JSON.stringify(d.segments||[])),
       ts:new Date().toISOString()
     });
     AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Rejected Classification Data',
       co:w.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
-      detail:`FY${activeYear} — flagged Classification data issue [${issueLabel}], correct data on p.${pageRef}: ${reason}`});
+      detail:`FY${activeYear} — flagged [${issueLabel}], correct data on p.${pageRef}: ${reason}`});
     closeModal();
     document.getElementById('form-panel').innerHTML = buildForm();
     rebindActionBar();
@@ -4269,7 +4638,7 @@ function renderCompanyReport(wbId) {
   window.submitForQC = id => {
     const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
     if (isAIYear(wb, activeYear) && !isYearFullyResolved(wb, activeYear)) {
-      toast('Confirm the Classification data and Sub-Theme review before submitting for QC.','err'); return;
+      toast('Confirm the Classification data and Sub-Theme review before submitting.','err'); return;
     }
     const dCheck = (CLSDATA[wb.coId]||{})[activeYear];
     if (dCheck && dCheck.segments && dCheck.segments.length) {
@@ -4285,17 +4654,103 @@ function renderCompanyReport(wbId) {
     const note = document.getElementById('analyst-note')?.value.trim() || '';
     if (!wb.yearsGC.includes(activeYear)) wb.yearsGC = [...wb.yearsGC,activeYear].sort();
     wb.pendingYears = (wb.pendingYears||[]).filter(y=>y!==activeYear);
-    wb.wfStatus = 'PENDING_QC';
+    const wfCase = determineWorkflowCase(wb, activeYear);
+    const need4eye = requires4Eye(wb, activeYear);
+    wb.submittedBy = currentUser.name;
     wb.submittedDate = new Date().toISOString().split('T')[0];
-    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Submitted for QC',
-      co:wb.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
-      detail:`FY${activeYear} submitted for QC review.${note?' Note: '+note:''}` });
-    toast(`${wb.coName} — FY${activeYear} submitted for QC ✓`,'ok');
+    // Analyst 2 submitting (any case) → push straight to GC
+    if (wb.wfStatus === 'PENDING_REVIEW') {
+      wb.wfStatus = 'COMPLETED'; wb.completionStatus = 'COMPLETED'; wb.approvedBy = currentUser.name;
+      const allYrs = [...new Set([...(wb.yearsGC||[]), ...(wb.pendingYears||[])])].sort((a,b)=>a-b);
+      const existing = GOLDEN.find(g=>g.coId===wb.coId);
+      if (existing) {
+        existing.yearsGC = [...new Set([...existing.yearsGC,...allYrs])].sort();
+        existing.pushedDate = new Date().toISOString().split('T')[0];
+        existing.pushedBy = currentUser.name;
+        existing.invalidated = false; existing.invYears = [];
+      } else {
+        GOLDEN.push({id:'G'+uid(),coId:wb.coId,coName:wb.coName,isin:wb.isin,l0:wb.l0,l0Name:wb.l0Name,
+          yearsGC:allYrs,pushedDate:new Date().toISOString().split('T')[0],pushedBy:currentUser.name,
+          invalidated:false,invYears:[]});
+      }
+      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Analyst 2 — Submitted → GC',
+        co:wb.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+        detail:`FY${activeYear} — ${wfCase} case. Analyst 2 reviewed, submitted. Pushed to Golden Copy.${note?' Note: '+note:''}` });
+      toast(`${wb.coName} — FY${activeYear} pushed to Golden Copy ✓`,'ok');
+    } else {
+      // All cases: Analyst 1 always goes to PENDING_REVIEW for Analyst 2 to review and submit to GC
+      wb.wfStatus = 'PENDING_REVIEW';
+      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'Submitted for Analyst 2 Review',
+        co:wb.coName,year:activeYear+'',ts:new Date().toLocaleString('en-GB'),
+        detail:`FY${activeYear} — ${wfCase} case. Submitted by Analyst 1, awaiting Analyst 2.${note?' Note: '+note:''}` });
+      toast(`${wb.coName} — FY${activeYear} submitted ✓ — moves to Analyst 2 for review`,'ok');
+    }
     refreshBadges();
     setTimeout(()=>nav('workbench'),700);
   };
 }
 
+
+// ── Analyst 2 (4-eye) review handlers ───────────────────────────────────────
+// These fire when a 4-eye case (2a/2b/4a/4b) is in PENDING_REVIEW and a second
+// analyst opens the filing to accept or send it back.
+window.analyst2Approve = function(id) {
+  const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
+  wb.wfStatus = 'PENDING_QC';
+  AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'2nd Review — Approved',
+    co:wb.coName,year:'',ts:new Date().toLocaleString('en-GB'),
+    detail:`2nd review passed by ${currentUser.name}. Approved and passed to QC.`});
+  toast(`${wb.coName} — approved ✓ · passed to QC`,'ok');
+  refreshBadges();
+  setTimeout(()=>nav('workbench'),700);
+};
+
+window.analyst2Reject = function(id) {
+  const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
+  showModal(`
+  <div class="m-hd">
+    <div><div class="m-title">Send Back — ${esc(wb.coName)}</div><div class="m-sub">2nd review failed — return to Analyst 1 with feedback</div></div>
+    <button class="m-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="m-body">
+    <div class="fg">
+      <label class="fl">Reason for sending back <span class="req">*</span></label>
+      <textarea class="ft" id="a2-reject-reason" style="min-height:80px" placeholder="Describe what needs to be corrected — specific segments, page numbers, values, etc." oninput="a2RejectValidate()"></textarea>
+      <div id="a2-reject-help" style="font-size:10.5px;color:var(--txt3);margin-top:4px">Minimum 20 characters required.</div>
+    </div>
+  </div>
+  <div class="m-foot">
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-danger" id="a2-reject-confirm" disabled onclick="a2RejectConfirm('${id}')">Send Back</button>
+  </div>`, 'm-md');
+};
+
+window.a2RejectValidate = function() {
+  const txt = (document.getElementById('a2-reject-reason')?.value||'').trim();
+  const btn = document.getElementById('a2-reject-confirm');
+  const help = document.getElementById('a2-reject-help');
+  if (!btn || !help) return;
+  const ok = txt.length >= 20;
+  btn.disabled = !ok;
+  help.textContent = ok ? 'Looks good ✓' : `Minimum 20 characters — currently ${txt.length}.`;
+  help.style.color = ok ? 'var(--green)' : 'var(--amber)';
+};
+
+window.a2RejectConfirm = function(id) {
+  const reason = document.getElementById('a2-reject-reason')?.value.trim();
+  if (!reason || reason.length < 20) return;
+  const wb = WORKBENCH.find(x=>x.id===id); if (!wb) return;
+  wb.wfStatus = 'PENDING_ANALYST';
+  wb.rejComment = reason;
+  AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',action:'2nd Review — Sent Back',
+    co:wb.coName,year:'',ts:new Date().toLocaleString('en-GB'),
+    detail:`Sent back by ${currentUser.name} (2nd review): ${reason}`});
+  closeModal();
+  toast(`${wb.coName} — sent back to Analyst 1 for correction`,'warn');
+  refreshBadges();
+  setTimeout(()=>nav('workbench'),700);
+};
 
 // Inline QC submit — reads comment from form panel textarea
 window.submitQCInline = function(wbId, action) {
@@ -4324,7 +4779,7 @@ window.submitQCDirect = function(wbId, dec, comment) {
   if (!comment) { toast('Comment is mandatory.','err'); return; }
   const w = WORKBENCH.find(x=>x.id===wbId); if (!w) return;
   if (dec==='accept') {
-    w.wfStatus = 'COMPLETED'; w.completionStatus = 'COMPLETED'; w.qcBy = currentUser.name;
+    w.wfStatus = 'COMPLETED'; w.completionStatus = 'COMPLETED'; w.approvedBy = currentUser.name;
     const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
     const existing = GOLDEN.find(g=>g.coId===w.coId);
     if (existing) {
@@ -4337,27 +4792,25 @@ window.submitQCDirect = function(wbId, dec, comment) {
         yearsGC:allYrs,pushedDate:new Date().toISOString().split('T')[0],pushedBy:currentUser.name,
         invalidated:false,invYears:[]});
     }
-    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-      action:'QC Accepted → Pushed to GC',co:w.coName,year:allYrs.join(', '),
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',
+      action:'Approved → Pushed to GC',co:w.coName,year:'—',
       ts:new Date().toLocaleString('en-GB'),detail:comment});
     const wbIdx = WORKBENCH.findIndex(x=>x.id===wbId);
     if (wbIdx !== -1) WORKBENCH.splice(wbIdx, 1);
     toast(`${w.coName} accepted and pushed to Golden Copy ✓`, 'ok');
+  } else if (w.rejCount >= 2) {
+    w.wfStatus = 'PENDING_IC';
+    w.rejCount++;
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',
+      action:'Escalated to Committee',co:w.coName,year:'—',
+      ts:new Date().toLocaleString('en-GB'),detail:comment});
+    toast(`${w.coName} — 2nd rejection. Escalated to ITICS Committee.`, 'warn');
   } else {
-    w.rejCount = (w.rejCount||0)+1; w.rejComment = comment;
-    if (w.rejCount >= 2) {
-      w.wfStatus = 'PENDING_IC';
-      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-        action:`QC Rejected (${w.rejCount}x) → Escalated to Committee`,co:w.coName,year:'—',
-        ts:new Date().toLocaleString('en-GB'),detail:comment});
-      toast(`${w.coName} — 2nd rejection. Escalated to ITICS Committee.`, 'warn');
-    } else {
-      w.wfStatus = 'PENDING_ANALYST';
-      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-        action:'QC Rejected (1st)',co:w.coName,year:'—',
-        ts:new Date().toLocaleString('en-GB'),detail:comment});
-      toast(`${w.coName} rejected. Returned to ${w.assignedTo}.`, 'warn');
-    }
+    w.wfStatus = 'PENDING_ANALYST'; w.rejCount++; w.rejComment = comment;
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',
+      action:'Rejected — Returned to Analyst',co:w.coName,year:'—',
+      ts:new Date().toLocaleString('en-GB'),detail:comment});
+    toast(`${w.coName} rejected. Returned to ${w.assignedTo}.`, 'warn');
   }
   refreshBadges(); nav('workbench');
 };
@@ -4371,7 +4824,7 @@ window.submitQC = function(wbId, action) {
   if (dec==='accept') {
     w.wfStatus = 'COMPLETED';
     w.completionStatus = 'COMPLETED';
-    w.qcBy = currentUser.name;
+    w.approvedBy = currentUser.name;
     const allYrs = [...new Set([...(w.yearsGC||[]), ...(w.pendingYears||[])])].sort((a,b)=>a-b);
     const existing = GOLDEN.find(g=>g.coId===w.coId);
     if (existing) {
@@ -4384,29 +4837,19 @@ window.submitQC = function(wbId, action) {
         yearsGC:allYrs,pushedDate:new Date().toISOString().split('T')[0],pushedBy:currentUser.name,
         invalidated:false,invYears:[]});
     }
-    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-      action:'QC Accepted → Pushed to GC',co:w.coName,year:allYrs.join(', '),
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',
+      action:'Approved → Pushed to GC',co:w.coName,year:'—',
       ts:new Date().toLocaleString('en-GB'),detail:comment});
     // Remove the WB entry — the editable copy disappears now that GC is updated
     const wbIdx = WORKBENCH.findIndex(x => x.id === wbId);
     if (wbIdx !== -1) WORKBENCH.splice(wbIdx, 1);
     closeModal(); toast(`${w.coName} accepted and pushed to Golden Copy ✓`, 'ok');
   } else {
-    w.rejCount = (w.rejCount||0)+1;
-    w.rejComment = comment;
-    if (w.rejCount >= 2) {
-      w.wfStatus = 'PENDING_IC';
-      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-        action:`QC Rejected (${w.rejCount}x) → Escalated to Committee`,co:w.coName,year:'—',
-        ts:new Date().toLocaleString('en-GB'),detail:comment});
-      closeModal(); toast(`${w.coName} — 2nd rejection. Escalated to ITICS Committee.`, 'warn');
-    } else {
-      w.wfStatus = 'rejected';
-      AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'qc',
-        action:`QC Rejected (1st)`,co:w.coName,year:'—',
-        ts:new Date().toLocaleString('en-GB'),detail:comment});
-      closeModal(); toast(`${w.coName} rejected. Returned to ${w.assignedTo}.`, 'warn');
-    }
+    w.wfStatus = 'PENDING_ANALYST'; w.rejComment = comment;
+    AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:'analyst',
+      action:'Rejected — Returned to Analyst',co:w.coName,year:'—',
+      ts:new Date().toLocaleString('en-GB'),detail:comment});
+    closeModal(); toast(`${w.coName} rejected. Returned to ${w.assignedTo}.`, 'warn');
   }
   refreshBadges(); renderWorkbench();
 };
@@ -4447,8 +4890,7 @@ function renderCA() {
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost btn-sm" onclick="openAddCA()">+ Add Manually</button>
       <button class="btn btn-ghost btn-sm" onclick="openCAUpload()">Bulk Upload</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportCA('csv')">CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportCA('xlsx')">XLSX</button>
+      ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportCA('csv')">CSV</button><button class="btn btn-ghost btn-sm" onclick="exportCA('xlsx')">XLSX</button>`)}
     </div>
   </div>
   <div class="tbl-wrap">
@@ -4664,7 +5106,7 @@ function renderCAGolden() {
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <span id="cagc-cnt" style="font-size:11.5px;color:var(--txt3)"></span>
-      <button class="btn btn-ghost btn-sm" onclick="exportCAGC()">↓ CSV</button>
+      ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportCAGC()">↓ CSV</button>`)}
     </div>
   </div>
   <div class="tbl-wrap">
@@ -5244,7 +5686,7 @@ function renderAudit() {
   document.getElementById('view').innerHTML = `
   <div class="pg-hd">
     <div><div class="pg-title">Audit Trail</div><div class="pg-sub">${AUDIT.length} total events · Immutable action log</div></div>
-    <button class="btn btn-ghost btn-sm" onclick="exportAudit()">Export</button>
+    ${adminBtn(`<button class="btn btn-ghost btn-sm" onclick="exportAudit()">Export</button>`)}
   </div>
   <div class="tbl-wrap">
     <div class="tbl-bar" style="flex-wrap:wrap;gap:8px">
@@ -5278,7 +5720,7 @@ function renderAudit() {
       : rows.map(a=>`<tr>
           <td class="mono" style="font-size:11px">${esc(a.id)}</td>
           <td style="font-weight:600;font-size:12.5px">${esc(a.user)}</td>
-          <td><span class="badge ${a.role==='analyst'?'bw-analyst':a.role==='qc'?'bw-qc':a.role==='committee'?'bw-committee':a.role==='rm'?'bw-gc':'bc-unassigned'}">${a.role.toUpperCase()}</span></td>
+          <td><span class="badge ${a.role==='analyst'?'bw-analyst':false?'bw-qc':a.role==='committee'?'bw-committee':a.role==='rm'?'bw-gc':'bc-unassigned'}">${a.role.toUpperCase()}</span></td>
           <td style="font-size:12.5px">${esc(a.action)}</td>
           <td style="font-weight:500">${esc(a.co)}</td>
           <td class="mono" style="font-size:12px">${esc(a.year)}</td>
@@ -5329,7 +5771,7 @@ window.doReassign = function(wbId) {
   if (!rs) { toast('Reason is required.','err'); return; }
   var ch = [];
   if (na !== w.assignedTo)   { ch.push('Analyst: '+w.assignedTo+' to '+na);   w.assignedTo   = na; }
-  if (nq !== w.qcAssignedTo) { ch.push('QC: '+w.qcAssignedTo+' to '+nq);     w.qcAssignedTo = nq; }
+  if (nq !== w.qcAssignedTo) { ch.push('2nd Reviewer: '+w.qcAssignedTo+' to '+nq);     w.qcAssignedTo = nq; }
   if (!ch.length) { toast('No changes - same assignments selected.','warn'); return; }
   AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
     action:'Task Reassigned', co:w.coName, year:'--',
@@ -5366,7 +5808,7 @@ function renderAssignments() {
   var allChk=rows.length>0&&selInView===rows.length;
   var totalSel=Object.keys(window._asgSel).filter(function(k){return window._asgSel[k];}).length;
   function lb(n,mx,col){ var w=mx?Math.round(n/mx*100):0; return '<div style="display:flex;align-items:center;gap:6px"><div style="width:56px;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+col+';border-radius:3px"></div></div><span class="mono" style="font-size:10.5px;color:var(--txt3)">'+n+'</span></div>'; }
-  var wfLabel={'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Pending QC','PENDING_IC':'Pending IC'};
+  var wfLabel={'PENDING_ANALYST':'Pending Analyst','PENDING_QC':'Ready for GC','PENDING_IC':'2nd Analyst Review'};
   var wfCls={'PENDING_ANALYST':'bw-analyst','PENDING_QC':'bw-qc','PENDING_IC':'bw-committee'};
   function mkCard(u,n,mx,bg,fk){
     var active=(fk==='ana'?fAna:fQC)===u.name;
@@ -5389,7 +5831,7 @@ function renderAssignments() {
           +'<td>'+typeBadge(w.type)+'</td>'
           +'<td><span class="badge '+(wfCls[w.wfStatus]||'bc-unassigned')+'">'+(wfLabel[w.wfStatus]||w.wfStatus)+'</span></td>'
           +'<td><div style="font-size:11.5px;font-weight:500">'+esc(w.assignedTo||'--')+'</div><div style="font-size:10px;color:var(--txt3)">Analyst</div></td>'
-          +'<td><div style="font-size:11.5px;font-weight:500">'+esc(w.qcAssignedTo||'--')+'</div><div style="font-size:10px;color:var(--txt3)">QC</div></td>'
+          +'<td><div style="font-size:11.5px;font-weight:500">'+esc(w.qcAssignedTo||'--')+'</div><div style="font-size:10px;color:var(--txt3)">2nd Reviewer</div></td>'
           +'<td class="mono" style="font-size:11px;color:var(--txt3)">'+esc(w.createdDate||'')+'</td></tr>';
       }).join('');
   var stickyBar=totalSel>0
@@ -5428,7 +5870,7 @@ function renderAssignments() {
     +'<th class="sortable" onclick="window._asgSCol=\'coName\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Company</th>'
     +'<th>Type</th><th>Status</th>'
     +'<th class="sortable" onclick="window._asgSCol=\'assignedTo\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Current Analyst</th>'
-    +'<th class="sortable" onclick="window._asgSCol=\'qcAssignedTo\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">Current QC</th>'
+    +'<th class="sortable" onclick="window._asgSCol=\'qcAssignedTo\';window._asgSDir=window._asgSDir===\'asc\'?\'desc\':\'asc\';renderAssignments()">2nd Reviewer</th>'
     +'<th>Created</th></tr></thead><tbody>'+tblRows+'</tbody></table>'+stickyBar+'</div></div>';
 }
 window.asgToggleSel=function(id,c){if(!window._asgSel)window._asgSel={};window._asgSel[id]=c;renderAssignments();};
@@ -5444,7 +5886,7 @@ window.asgApplyBar=function(){
   ids.forEach(function(id){var w=WORKBENCH.find(function(x){return x.id===id;});if(!w)return;
     var ch=[];
     if(na&&na!==w.assignedTo){ch.push('Analyst: '+w.assignedTo+' to '+na);w.assignedTo=na;}
-    if(nq&&nq!==w.qcAssignedTo){ch.push('QC: '+w.qcAssignedTo+' to '+nq);w.qcAssignedTo=nq;}
+    if(nq&&nq!==w.qcAssignedTo){ch.push('2nd Reviewer: '+w.qcAssignedTo+' to '+nq);w.qcAssignedTo=nq;}
     if(ch.length){count++;AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:currentRole,action:'Task Reassigned',co:w.coName,year:'--',ts:new Date().toLocaleString('en-GB'),detail:ch.join(' | ')+'. Reason: '+rs});}
   });
   window._asgSel={};toast('Updated '+count+' task'+(count!==1?'s':'')+'.','ok');renderAssignments();
@@ -5476,7 +5918,7 @@ window.openLevelBulkUpload = function() {
     +'</div>'
     +'<div style="display:flex;flex-direction:column;gap:12px">'
     +'<div style="display:flex;align-items:center;gap:10px">'
-    +'<button class="btn btn-ghost btn-sm" onclick="downloadLevelTemplate()">&#x2193; Download Template</button>'
+    +adminBtn('<button class="btn btn-ghost btn-sm" onclick="downloadLevelTemplate()">&#x2193; Download Template</button>')
     +'<span style="font-size:11.5px;color:var(--txt3)">XLSX with Sector, Theme, Sub-Theme sheets</span>'
     +'</div>'
     +'<div class="fg"><label class="fl">Upload filled template</label>'
@@ -5719,7 +6161,7 @@ window.wbAsgApply = function() {
     var w = WORKBENCH.find(function(x) { return x.id === id; }); if (!w) return;
     var ch = [];
     if (na && na !== w.assignedTo)   { ch.push('Analyst: '+w.assignedTo+' → '+na);   w.assignedTo   = na; }
-    if (nq && nq !== w.qcAssignedTo) { ch.push('QC: '+w.qcAssignedTo+' → '+nq);     w.qcAssignedTo = nq; }
+    if (nq && nq !== w.qcAssignedTo) { ch.push('2nd Reviewer: '+w.qcAssignedTo+' → '+nq);     w.qcAssignedTo = nq; }
     if (ch.length) {
       count++;
       AUDIT.unshift({ id:'AL'+uid(), user:currentUser.name, role:currentRole,
@@ -5777,7 +6219,7 @@ window.wbBulkReassign = function() {
   targets.forEach(function(w){
     var ch = [];
     if (fromRole==='analyst') { ch.push('Analyst: '+w.assignedTo+' → '+toName); w.assignedTo=toName; }
-    else { ch.push('QC: '+w.qcAssignedTo+' → '+toName); w.qcAssignedTo=toName; }
+    else { ch.push('2nd Reviewer: '+w.qcAssignedTo+' → '+toName); w.qcAssignedTo=toName; }
     AUDIT.unshift({id:'AL'+uid(),user:currentUser.name,role:currentRole,
       action:'Bulk Reassigned',co:w.coName,year:'--',
       ts:new Date().toLocaleString('en-GB'),
@@ -6842,4 +7284,9 @@ function renderScreener() {
 
 // ═══════════════════════════════════════════════════════════
 nav('dashboard');
+applySidebarVisibility();
+if (localStorage.getItem('sb-collapsed')) {
+  const sb = document.getElementById('sidebar');
+  if (sb) sb.classList.add('collapsed');
+}
 </script></body></html>
