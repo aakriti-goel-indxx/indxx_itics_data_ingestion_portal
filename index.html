@@ -3878,6 +3878,17 @@ function renderCompanyReport(wbId) {
       }
     }
 
+    // ── Prior-year comparison — match by label first, positional fallback ──
+    const _priorSegs = ((CLSDATA[w.coId]||{})[activeYear-1]||{}).segments || [];
+    const _priorYear = activeYear - 1;
+    function _findPrior(label, idx) {
+      return _priorSegs.find(p => p.label && p.label.toLowerCase() === (label||'').toLowerCase())
+          || _priorSegs[idx] || null;
+    }
+    function _priorNote(html) {
+      return `<div style="font-size:9.5px;color:var(--txt3);margin-top:2px;line-height:1.3">${html}</div>`;
+    }
+
     const revenueContent = `
     ${clsBanner}
     <div style="display:flex;align-items:center;gap:10px;padding:2px 0 12px;font-size:12px" id="revtotal-bar">
@@ -3899,13 +3910,28 @@ function renderCompanyReport(wbId) {
             const rowGated = _isAIYr && clsLocked;
             const rowEditableCls = _isAIYr ? clsRowsEditable : isYearEditable(activeYear);
             const finalized = !_isAIYr || isRowSubThemeFinalized(w, activeYear, i);
+            const _p = _priorSegs.length ? _findPrior(s.label, i) : null;
+
+            // ── Prior-year annotations (shown in read-only cells only, not over editable inputs) ──
+            const _pLabelNote = (_p && !rowEditableCls && _p.label && _p.label !== s.label)
+              ? _priorNote(`FY${_priorYear}: ${esc(_p.label)}`)  : '';
+            const _pRevNote = (_p && !rowEditableCls && _p.rev > 0)
+              ? _priorNote(`FY${_priorYear}: ${fmtNum(_p.rev)}${
+                  s.rev > 0
+                    ? ` <span style="color:${s.rev > _p.rev ? 'var(--green)' : 'var(--red)'};font-weight:600">${s.rev > _p.rev ? '▲' : '▼'} ${fmtNum(Math.abs(s.rev - _p.rev))}</span>`
+                    : ''}`)  : '';
+            const _pPctNote = (_p && _p.pct > 0)
+              ? _priorNote(`FY${_priorYear}: <span style="font-family:var(--mono)">${_p.pct.toFixed(1)}%</span>`) : '';
+            const _pSubNote = (_p && _p.l2n)
+              ? _priorNote(`FY${_priorYear}: ${esc(_p.l2n)}`) : '';
+
             const labelCell = rowEditableCls
               ? `<input class="fi-inline" id="cls-label-${i}" value="${esc(s.label)}">`
-              : `<span>${esc(s.label)}</span>`;
+              : `<span>${esc(s.label)}</span>${_pLabelNote}`;
             const revCell = rowEditableCls
               ? `<input class="fi-inline mono rc-rev-input" id="cls-rev-${i}" type="number" step="0.1" style="width:90px" value="${s.rev||0}" oninput="recalcAllPercentages()">`
-              : `<span class="mono rc-rev-static" data-rev="${s.rev||0}" style="font-size:12px">${fmtNum(s.rev||0)}</span>`;
-            const pctCell = `<span class="mono rc-pct-display" style="font-size:12px;font-weight:600">${s.pct.toFixed(1)}%</span>`;
+              : `<span class="mono rc-rev-static" data-rev="${s.rev||0}" style="font-size:12px">${fmtNum(s.rev||0)}</span>${_pRevNote}`;
+            const pctCell = `<span class="mono rc-pct-display" style="font-size:12px;font-weight:600">${s.pct.toFixed(1)}%</span>${_pPctNote}`;
             const clsCell = rowEditableCls
               ? `<span class="rc-cls-display" id="cls-clsbadge-${i}">${revBadge(computeRevenueClass(s.pct))}</span><div style="font-size:9.5px;color:var(--txt3);margin-top:2px">auto · by Revenue %</div>`
               : revBadge(s.cls);
@@ -3921,10 +3947,10 @@ function renderCompanyReport(wbId) {
             const _topConf = (s.llm && !finalized) ? getSuggestedSubThemes(s)[0]?.conf : null;
             const _confChip = _topConf ? `<span style="font-size:9.5px;font-family:var(--mono);font-weight:700;padding:1px 5px;border-radius:3px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);margin-left:5px" title="AI confidence score">${_topConf}%</span>` : '';
             const subThemeCell = rowGated
-              ? `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--txt3);font-size:11px;cursor:not-allowed;margin-left:4px;opacity:.6" title="Confirm the Classification data above first">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`
+              ? `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--txt3);font-size:11px;cursor:not-allowed;margin-left:4px;opacity:.6" title="Confirm the Classification data above first">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>${_pSubNote}`
               : finalized
-                ? `<div style="font-size:12px">${esc(s.l2n)}</div><div class="mono" style="font-size:10px;color:var(--txt3)">${s.l2}</div>`
-                : `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:4px" onclick="subThemeOpenSet(${i})">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>`;
+                ? `<div style="font-size:12px">${esc(s.l2n)}</div><div class="mono" style="font-size:10px;color:var(--txt3)">${s.l2}</div>${_pSubNote}`
+                : `<div style="font-size:12px;font-weight:600">${esc(s.l2n)}${_confChip} <span style="color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:4px" onclick="subThemeOpenSet(${i})">Set</span></div><div style="font-size:10px;color:var(--txt3);font-style:italic">(Top suggested sub theme)</div>${_pSubNote}`;
             return `
           <tr id="revrow-${i}">
             <td style="font-weight:600;font-size:12px;min-width:130px">${labelCell}</td>
